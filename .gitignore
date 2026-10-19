@@ -1,0 +1,4 @@
+/target
+/_site
+*.json.tmp
+.DS_Store

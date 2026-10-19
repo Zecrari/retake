@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://zecrari.github.io/retake/</loc>
+    <lastmod>__LASTMOD__</lastmod>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://zecrari.github.io/retake/docs/</loc>
+    <lastmod>__LASTMOD__</lastmod>
+    <priority>0.8</priority>
+  </url>
+</urlset>

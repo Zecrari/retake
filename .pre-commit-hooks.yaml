@@ -1,0 +1,7 @@
+- id: retake-check
+  name: retake check
+  description: Validate retake cassettes and fail if they contain secrets.
+  entry: retake check
+  language: rust
+  files: \.json$
+  pass_filenames: true

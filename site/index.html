@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>retake — Record &amp; replay LLM API calls for deterministic tests</title>
+  <meta name="description" content="retake is an open-source, single-binary proxy that records OpenAI, Anthropic and OpenAI-compatible API calls once and replays them offline. Fast, free, deterministic tests for LLM apps and AI agents.">
+  <link rel="canonical" href="https://zecrari.github.io/retake/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="author" content="Zecrari">
+  <meta name="theme-color" content="#fbfaf8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0d11" media="(prefers-color-scheme: dark)">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="retake">
+  <meta property="og:title" content="retake — Deterministic tests for LLM apps and agents">
+  <meta property="og:description" content="Record OpenAI and Anthropic API calls once, replay them offline in every test run. One binary, any language, free and open source.">
+  <meta property="og:url" content="https://zecrari.github.io/retake/">
+  <meta property="og:image" content="https://zecrari.github.io/retake/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="retake: record LLM API calls once, replay them deterministically in tests">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="retake — Deterministic tests for LLM apps and agents">
+  <meta name="twitter:description" content="Record OpenAI and Anthropic API calls once, replay them offline in every test run. One binary, any language.">
+  <meta name="twitter:image" content="https://zecrari.github.io/retake/og.png">
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+  <link rel="stylesheet" href="assets/site.css">
+
+  <script>
+    try {
+      var t = localStorage.getItem("retake-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://zecrari.github.io/retake/#website",
+        "url": "https://zecrari.github.io/retake/",
+        "name": "retake",
+        "publisher": { "@id": "https://zecrari.github.io/retake/#org" }
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://zecrari.github.io/retake/#org",
+        "name": "Zecrari",
+        "url": "https://github.com/Zecrari"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "retake",
+        "description": "An open-source, single-binary proxy that records LLM API calls (OpenAI, Anthropic and OpenAI-compatible APIs) once and replays them deterministically in tests.",
+        "url": "https://zecrari.github.io/retake/",
+        "downloadUrl": "https://github.com/Zecrari/retake/releases",
+        "softwareVersion": "0.1.0",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "Testing tool",
+        "operatingSystem": "Linux, macOS, Windows",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@id": "https://zecrari.github.io/retake/#org" },
+        "sameAs": ["https://github.com/Zecrari/retake"]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is retake?",
+            "acceptedAnswer": { "@type": "Answer", "text": "retake is a free, open-source record and replay proxy for LLM APIs. It records real OpenAI, Anthropic or OpenAI-compatible API calls once, saves them as readable cassette files, and replays them in later test runs so tests are fast, free, offline and deterministic." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to change my code to use retake?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. retake sets OPENAI_BASE_URL and ANTHROPIC_BASE_URL for the command it runs, and the official SDKs read those variables automatically. Optionally, send an x-retake-session header to use one cassette per test." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which languages and providers does retake support?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Any language, because retake is an HTTP proxy: Python, TypeScript, Go, Java, .NET, Ruby, Rust or curl. OpenAI and Anthropic work out of the box, and any OpenAI-compatible API such as Ollama, vLLM, Groq, OpenRouter or Azure OpenAI can be added with --upstream." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does retake support streaming responses?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Server-sent event streams are stored as whole events and replayed byte-for-byte. Replays are instant by default, and --timing realtime reproduces the original pacing." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it safe to commit cassettes to git?",
+            "acceptedAnswer": { "@type": "Answer", "text": "retake never stores request headers, so API keys in headers never reach a cassette, and it redacts anything in bodies that looks like an API key, token or private key. Run retake check in CI or as a pre-commit hook to catch anything else." }
+          },
+          {
+            "@type": "Question",
+            "name": "What happens when a prompt changes?",
+            "acceptedAnswer": { "@type": "Answer", "text": "In replay mode the request no longer matches, so retake fails it with a 404 and prints a diff against the closest recording. Re-record with retake record, or use retake auto to record only the new calls." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is retake free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. retake is free and open source under the MIT license." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="./" aria-label="retake home">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="currentColor"/><path d="M48.74 34.95A17 17 0 1 1 40.5 17.28" fill="none" style="stroke:var(--bg)" stroke-width="5" stroke-linecap="round"/><path d="M47.6 21.4 42.3 10.1 34.3 24Z" style="fill:var(--bg)"/><circle cx="32" cy="32" r="7.5" fill="#ff5a4b"/></svg>
+        retake
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a class="hide-sm" href="#how-it-works">How it works</a>
+        <a class="hide-sm" href="#features">Features</a>
+        <a href="docs/">Docs</a>
+        <a href="https://github.com/Zecrari/retake" rel="noopener">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span class="hide-sm">GitHub</span>
+        </a>
+        <button class="icon-btn" type="button" data-theme-toggle aria-label="Toggle dark mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div>
+          <a class="eyebrow" href="https://github.com/Zecrari/retake/releases"><span class="rec-dot" aria-hidden="true"></span>Open source · v0.1.0</a>
+          <h1 id="hero-title">Deterministic tests for <span class="rec">LLM</span> apps and <span class="play">agents</span>.</h1>
+          <p class="lede">retake records your OpenAI and Anthropic API calls once, then replays them in every test run — offline, in milliseconds, byte-for-byte the same. One binary. Any language. No code changes.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="docs/">Get started
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+            <a class="btn" href="https://github.com/Zecrari/retake" rel="noopener">Star on GitHub</a>
+          </div>
+          <div class="install">
+            <span class="prompt" aria-hidden="true">$</span>
+            <code id="install-cmd">curl -fsSL https://zecrari.github.io/retake/install.sh | sh</code>
+            <button class="copy-btn" type="button" data-copy="install-cmd" aria-label="Copy to clipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+          </div>
+          <p class="install-alt">Windows: <code>irm https://zecrari.github.io/retake/install.ps1 | iex</code> · or <a href="https://github.com/Zecrari/retake/releases">download a binary</a></p>
+        </div>
+
+        <figure class="terminal" aria-label="Example terminal session">
+          <div class="terminal-bar" aria-hidden="true"><i></i><i></i><i></i><span>~/my-agent</span></div>
+<pre><code><span class="t-dim">$</span> <span class="t-cmd">retake record -- npm test</span>
+<span class="t-rec">●</span> recorded POST /anthropic/v1/messages → 200
+<span class="t-rec">●</span> recorded POST /anthropic/v1/messages → 200
+<span class="t-dim">  ✓ agent looks up the order (2.8s)</span>
+retake: 0 replayed, 2 recorded
+
+<span class="t-dim">$</span> <span class="t-cmd">retake replay -- npm test</span>
+<span class="t-dim">  ✓ agent looks up the order (</span><span class="t-ok">31ms</span><span class="t-dim">)</span>
+retake: <span class="t-ok">2 replayed</span>, 0 recorded, 0 unmatched
+
+<span class="t-dim"># someone edits the prompt…</span>
+<span class="t-dim">$</span> <span class="t-cmd">retake replay -- npm test</span>
+<span class="t-warn">no recording matches</span> POST /anthropic/v1/messages
+<span class="t-dim">closest: step 1</span>
+<span class="t-del">-  "content": "What is the status of order 1042?"</span>
+<span class="t-add">+  "content": "Where is order 1042?"</span></code></pre>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section-alt" aria-labelledby="problem-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">The problem</p>
+          <h2 id="problem-title">Testing code that calls an LLM is painful.</h2>
+          <p>Real API calls make every test run slow, costly and different. Hand-written mocks drift from reality and fall apart as soon as an agent makes more than one call.</p>
+        </div>
+        <div class="grid grid-3">
+          <div class="card">
+            <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+            <h3>Flaky</h3>
+            <p>The same prompt returns a different answer on every run, so assertions fail at random and nobody trusts the suite.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <h3>Expensive</h3>
+            <p>Every push, every branch and every retry burns real tokens — and CI needs a production API key to run at all.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <h3>Slow</h3>
+            <p>Seconds per call add up to minutes per suite. Agents that loop through tools make it far worse.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how-it-works" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">How it works</p>
+          <h2 id="how-title">Record once. Replay forever.</h2>
+          <p>retake is a tiny local proxy between your code and the API. It points your SDK at itself through standard environment variables — no plugins, no wrappers, no code changes.</p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <h3>Record a real run</h3>
+            <p>Run your tests through retake with a real key. Every call is forwarded and saved as a readable JSON cassette.</p>
+            <pre class="snippet"><code>retake record -- pytest</code></pre>
+          </div>
+          <div class="step">
+            <h3>Commit the cassettes</h3>
+            <p>Secrets are stripped automatically. Prompt and response changes show up in pull request diffs.</p>
+            <pre class="snippet"><code>git add cassettes/</code></pre>
+          </div>
+          <div class="step">
+            <h3>Replay everywhere</h3>
+            <p>Locally and in CI, calls are served from cassettes. Nothing reaches the network, and no key is needed.</p>
+            <pre class="snippet"><code>retake replay -- pytest</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-alt" aria-labelledby="lang-title">
+      <div class="wrap grid grid-2" style="align-items:center;gap:48px">
+        <div>
+          <p class="kicker">Any language</p>
+          <h2 id="lang-title">Works with the SDK you already use.</h2>
+          <p class="lede" style="margin-bottom:16px">Because retake speaks plain HTTP, it works the same from Python, TypeScript, Go, Java, .NET, Ruby, Rust or <code>curl</code>. The official OpenAI and Anthropic SDKs read <code>OPENAI_BASE_URL</code> and <code>ANTHROPIC_BASE_URL</code> automatically.</p>
+          <p style="color:var(--ink-2);margin:0">Want one cassette per test? Send an <code>x-retake-session</code> header — that's the only line you'll ever add.</p>
+        </div>
+        <div class="code-block">
+          <div class="tabs" role="tablist" aria-label="Language examples">
+            <button class="tab" role="tab" id="tab-py" aria-selected="true" aria-controls="panel-py">Python</button>
+            <button class="tab" role="tab" id="tab-ts" aria-selected="false" aria-controls="panel-ts" tabindex="-1">TypeScript</button>
+            <button class="tab" role="tab" id="tab-ci" aria-selected="false" aria-controls="panel-ci" tabindex="-1">GitHub Actions</button>
+            <button class="tab" role="tab" id="tab-other" aria-selected="false" aria-controls="panel-other" tabindex="-1">Ollama &amp; others</button>
+          </div>
+<div role="tabpanel" id="panel-py" aria-labelledby="tab-py"><pre><code><span class="c-k">from</span> openai <span class="c-k">import</span> OpenAI
+
+<span class="c-c"># Base URL comes from retake. Nothing else changes.</span>
+client = OpenAI(default_headers={
+    <span class="c-s">"x-retake-session"</span>: <span class="c-s">"checkout/refund-flow"</span>,
+})
+
+reply = client.chat.completions.<span class="c-f">create</span>(
+    model=<span class="c-s">"gpt-4.1-mini"</span>,
+    messages=[{<span class="c-s">"role"</span>: <span class="c-s">"user"</span>, <span class="c-s">"content"</span>: <span class="c-s">"Refund order 1042"</span>}],
+)</code></pre></div>
+<div role="tabpanel" id="panel-ts" aria-labelledby="tab-ts" hidden><pre><code><span class="c-k">import</span> Anthropic <span class="c-k">from</span> <span class="c-s">"@anthropic-ai/sdk"</span>;
+
+<span class="c-c">// ANTHROPIC_BASE_URL is set by retake.</span>
+<span class="c-k">const</span> client = <span class="c-k">new</span> <span class="c-f">Anthropic</span>({
+  defaultHeaders: { <span class="c-s">"x-retake-session"</span>: <span class="c-s">"agent/lookup-order"</span> },
+});
+
+<span class="c-k">const</span> msg = <span class="c-k">await</span> client.messages.<span class="c-f">create</span>({
+  model: <span class="c-s">"claude-sonnet-5-5"</span>,
+  max_tokens: <span class="c-s">512</span>,
+  messages: [{ role: <span class="c-s">"user"</span>, content: <span class="c-s">"Where is order 1042?"</span> }],
+});</code></pre></div>
+<div role="tabpanel" id="panel-ci" aria-labelledby="tab-ci" hidden><pre><code><span class="c-c"># .github/workflows/test.yml</span>
+<span class="c-k">steps:</span>
+  - <span class="c-k">uses:</span> actions/checkout@v5
+  - <span class="c-k">uses:</span> <span class="c-s">Zecrari/retake@v0</span>
+  - <span class="c-k">run:</span> retake check        <span class="c-c"># no secrets in cassettes</span>
+  - <span class="c-k">run:</span> retake replay -- npm test
+    <span class="c-c"># no API key, no network, no cost</span></code></pre></div>
+<div role="tabpanel" id="panel-other" aria-labelledby="tab-other" hidden><pre><code><span class="c-c"># Any OpenAI-compatible API: Ollama, vLLM, Groq, OpenRouter…</span>
+retake record \
+  --upstream ollama=http://localhost:11434 \
+  -- python app.py
+
+<span class="c-c"># Your app uses $RETAKE_OLLAMA_URL/v1 as its base URL.</span>
+
+<span class="c-c"># Or run the proxy on its own and point anything at it:</span>
+retake replay --port 9000</code></pre></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Features</p>
+          <h2 id="features-title">Small tool. Sharp edges filed off.</h2>
+          <p>Everything you need to trust LLM tests in CI, and nothing you don't.</p>
+        </div>
+        <div class="features">
+          <div class="feature">
+            <h3>Byte-identical streaming</h3>
+            <p>Server-sent events are stored as whole events and replayed exactly. Add <code>--timing realtime</code> to reproduce the original pacing.</p>
+          </div>
+          <div class="feature">
+            <h3>Built for agents</h3>
+            <p>Repeated identical calls replay in recorded order; parallel calls match independently. Tool-calling loops just work.</p>
+          </div>
+          <div class="feature">
+            <h3>Diffs, not mysteries</h3>
+            <p>An unrecorded call fails with a clear 404 and a diff against the closest recording — never a silent real call or a retried 5xx.</p>
+          </div>
+          <div class="feature">
+            <h3>Safe to commit</h3>
+            <p>Request headers are never stored, and keys and tokens in bodies are redacted. <code>retake check</code> guards your repo in CI.</p>
+          </div>
+          <div class="feature">
+            <h3>Smart matching</h3>
+            <p>JSON is compared after sorting keys, so formatting never matters. <code>--ignore</code> skips fields like request IDs.</p>
+          </div>
+          <div class="feature">
+            <h3>Single static binary</h3>
+            <p>Written in Rust. No Python, Node or Docker required. Prebuilt for Linux, macOS and Windows.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-alt" aria-labelledby="compare-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">Compared</p>
+          <h2 id="compare-title">Mocks, live calls, or a recording?</h2>
+          <p>Recordings give you real model output with the speed and determinism of a mock.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col"></th><th scope="col">Live API calls</th><th scope="col">Hand-written mocks</th><th scope="col" class="us">retake</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Real model behavior</td><td class="yes">Yes</td><td class="no">No — invented</td><td class="us yes">Yes — recorded</td></tr>
+              <tr><td>Deterministic</td><td class="no">No</td><td class="yes">Yes</td><td class="us yes">Yes</td></tr>
+              <tr><td>Cost per CI run</td><td class="no">Tokens every time</td><td class="yes">Free</td><td class="us yes">Free</td></tr>
+              <tr><td>Speed</td><td class="no">Seconds per call</td><td class="yes">Instant</td><td class="us yes">Instant</td></tr>
+              <tr><td>Works offline / without a key</td><td class="no">No</td><td class="yes">Yes</td><td class="us yes">Yes</td></tr>
+              <tr><td>Effort for a multi-step agent</td><td class="yes">None</td><td class="no">High, and it drifts</td><td class="us yes">One record run</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="faq-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="kicker">FAQ</p>
+          <h2 id="faq-title">Questions, answered.</h2>
+        </div>
+        <div class="faq">
+          <details>
+            <summary>What is retake?</summary>
+            <p>retake is a free, open-source record and replay proxy for LLM APIs — a “VCR for LLMs”. It records real OpenAI, Anthropic or OpenAI-compatible API calls once, saves them as readable cassette files, and replays them in later test runs so tests are fast, free, offline and deterministic.</p>
+          </details>
+          <details>
+            <summary>Do I need to change my code?</summary>
+            <p>No. retake sets <code>OPENAI_BASE_URL</code> and <code>ANTHROPIC_BASE_URL</code> for the command it runs, and the official SDKs read those variables automatically. Optionally, send an <code>x-retake-session</code> header to use one cassette per test.</p>
+          </details>
+          <details>
+            <summary>Which languages and providers are supported?</summary>
+            <p>Any language, because retake is an HTTP proxy. OpenAI and Anthropic work out of the box, and any OpenAI-compatible API — Ollama, vLLM, LM Studio, Groq, OpenRouter, Azure OpenAI — can be added with <code>--upstream name=url</code>.</p>
+          </details>
+          <details>
+            <summary>Does it support streaming responses?</summary>
+            <p>Yes. Server-sent event streams are stored as whole events and replayed byte-for-byte. Replays are instant by default; <code>--timing realtime</code> reproduces the original pacing when you need to test timeouts or streaming UI.</p>
+          </details>
+          <details>
+            <summary>Is it safe to commit cassettes to git?</summary>
+            <p>retake never stores request headers, so keys sent in headers can't reach a cassette, and it redacts anything in bodies that looks like an API key, token or private key. Run <code>retake check</code> in CI or as a pre-commit hook to catch anything else, and review cassettes for personal data before committing.</p>
+          </details>
+          <details>
+            <summary>What happens when a prompt changes?</summary>
+            <p>In replay mode the request no longer matches, so retake fails it with a 404 and prints a diff against the closest recording. Re-record with <code>retake record</code>, or use <code>retake auto</code> to record only the new calls.</p>
+          </details>
+          <details>
+            <summary>Is retake free?</summary>
+            <p>Yes — free and open source under the MIT license.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-alt cta" aria-labelledby="cta-title">
+      <div class="wrap">
+        <h2 id="cta-title">Make your LLM tests boring again.</h2>
+        <p class="lede">Install in seconds, record once, and never pay for a flaky test run again.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="docs/">Read the docs</a>
+          <a class="btn" href="https://github.com/Zecrari/retake" rel="noopener">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <p style="margin:0">© 2026 Zecrari · MIT licensed</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="docs/">Documentation</a>
+        <a href="https://github.com/Zecrari/retake">GitHub</a>
+        <a href="https://github.com/Zecrari/retake/releases">Releases</a>
+        <a href="https://github.com/Zecrari/retake/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/Zecrari/retake/issues">Issues</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="assets/site.js" defer></script>
+</body>
+</html>

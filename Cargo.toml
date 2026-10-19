@@ -1,0 +1,42 @@
+[package]
+name = "retake"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Record LLM API calls once, replay them deterministically in tests. A single-binary, language-agnostic VCR proxy for OpenAI, Anthropic and any OpenAI-compatible API."
+license = "MIT"
+repository = "https://github.com/Zecrari/retake"
+homepage = "https://zecrari.github.io/retake/"
+documentation = "https://zecrari.github.io/retake/docs/"
+readme = "README.md"
+keywords = ["llm", "testing", "vcr", "openai", "anthropic"]
+categories = ["development-tools::testing", "command-line-utilities", "web-programming::http-server"]
+exclude = ["/site", "/.github", "/examples"]
+
+[dependencies]
+anyhow = "1.0.104"
+axum = "0.8.9"
+base64 = "0.23.1"
+bytes = "1.12.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
+futures-util = "0.3.34"
+regex = "1.13.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "stream", "gzip", "brotli", "deflate", "http2"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+similar = "3.2.0"
+tokio = { version = "1.54.0", features = ["full"] }
+tokio-stream = "0.1.19"
+tokio-util = { version = "0.7.20", features = ["rt"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+which = "8.0.6"
+
+[dev-dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = ["json"] }
+tempfile = "3.27.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

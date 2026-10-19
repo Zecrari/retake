@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest an idea or a provider to support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: How do you test LLM or agent code today, and where does it hurt?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like retake to do?
+    validations:
+      required: true
+  - type: input
+    id: stack
+    attributes:
+      label: Your stack
+      placeholder: e.g. TypeScript + Anthropic SDK, Go + Ollama

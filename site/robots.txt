@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zecrari.github.io/retake/sitemap.xml

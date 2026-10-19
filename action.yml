@@ -1,0 +1,27 @@
+name: Setup retake
+description: Install retake to record and replay LLM API calls for deterministic, offline tests.
+author: Zecrari
+branding:
+  icon: film
+  color: purple
+
+inputs:
+  version:
+    description: Release to install, e.g. `v0.1.0`, or `latest`.
+    required: false
+    default: latest
+
+outputs:
+  version:
+    description: The installed version.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: bash
+      env:
+        RETAKE_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/setup-action.sh"
