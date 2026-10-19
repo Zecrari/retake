@@ -1,0 +1,123 @@
+---
+title: How to Test Code That Calls the OpenAI API (2026 Guide)
+og_title: How to test code that calls the OpenAI API
+description: Test OpenAI API code without paying for every run: Chat Completions, Responses API, streaming, structured outputs and embeddings, in Python and TypeScript.
+path: guides/openai-api-testing/
+type: article
+breadcrumb: Guides=guides/; Testing OpenAI API code=guides/openai-api-testing/
+published: 2026-10-19
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <article class="prose">
+      <p class="tag">OpenAI</p>
+      <h1>How to test code that calls the OpenAI API</h1>
+      <div class="article-meta"><span>Updated October 2026</span><span>8 min read</span></div>
+      <p class="lead">Your code calls the OpenAI API — to summarize, classify, extract structured data, or drive an agent. How do you test it without flaky assertions, slow runs and a bill on every push? This guide compares the options and walks through a setup that works for Python and TypeScript.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ol>
+          <li><a href="#options">Your options</a></li>
+          <li><a href="#base-url">The key idea: point the SDK somewhere else</a></li>
+          <li><a href="#python">Python and pytest</a></li>
+          <li><a href="#typescript">TypeScript and Vitest</a></li>
+          <li><a href="#endpoints">Responses API, streaming, structured outputs, embeddings</a></li>
+          <li><a href="#tips">Tips</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="options">Your options</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Technique</th><th scope="col">How</th><th scope="col">Trade-off</th></tr></thead>
+          <tbody>
+            <tr><td>Patch the client</td><td><code>unittest.mock</code>, <code>vi.mock</code></td><td>Fast, but you invent the responses and couple tests to SDK internals</td></tr>
+            <tr><td>Mock HTTP</td><td>respx, responses, nock, MSW</td><td>More realistic, but you still hand-write JSON — and streaming is painful</td></tr>
+            <tr><td>Call the real API</td><td>A test key</td><td>Real behavior, but slow, costly, flaky and needs secrets in CI</td></tr>
+            <tr><td>Record and replay</td><td>A proxy such as <a href="{{base}}">retake</a></td><td>Real responses, fast and free; recordings need refreshing when prompts change</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Mocks are still the right tool for small units — "does my parser handle a refusal?" For anything that depends on what the model actually says, a recording of the real response is more honest than a mock you wrote yourself.</p>
+
+      <h2 id="base-url">The key idea: point the SDK somewhere else</h2>
+      <p>The official OpenAI SDKs read the <code>OPENAI_BASE_URL</code> environment variable. If it's set, every request goes there instead of <code>https://api.openai.com/v1</code>. That's all a record/replay proxy needs — no code changes, no SDK plugin.</p>
+      <p>retake sets that variable for the command it runs:</p>
+<pre><code>OPENAI_API_KEY=sk-... retake record -- pytest   # once: real calls, saved to cassettes/
+retake replay -- pytest                         # every time after: offline and free</code></pre>
+      <div class="callout">If your code passes <code>base_url</code> explicitly, read it from the environment (<code>os.environ.get("OPENAI_BASE_URL")</code>) so the proxy can take over in tests.</div>
+
+      <h2 id="python">Python and pytest</h2>
+      <p>A function under test:</p>
+<pre><code>from openai import OpenAI
+
+def classify(client: OpenAI, ticket: str) -> str:
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "Classify the ticket as billing, bug or other. Reply with one word."},
+            {"role": "user", "content": ticket},
+        ],
+    )
+    return response.choices[0].message.content.strip().lower()</code></pre>
+      <p>A fixture that gives each test its own cassette file, and a test:</p>
+<pre><code>import re, pytest
+from openai import OpenAI
+
+@pytest.fixture
+def client(request):
+    session = re.sub(r"[^A-Za-z0-9._/-]", "_", request.node.nodeid.replace("::", "/"))
+    return OpenAI(default_headers={"x-retake-session": session})
+
+def test_billing_ticket(client):
+    assert classify(client, "I was charged twice this month") == "billing"</code></pre>
+      <p>Record once with <code>retake record -- pytest</code>, commit <code>cassettes/</code>, and run <code>retake replay -- pytest</code> from then on.</p>
+
+      <h2 id="typescript">TypeScript and Vitest</h2>
+<pre><code>import OpenAI from "openai";
+import { beforeEach, expect, test } from "vitest";
+
+let client: OpenAI;
+beforeEach(() => {
+  const name = expect.getState().currentTestName ?? "default";
+  client = new OpenAI({ defaultHeaders: { "x-retake-session": name.replace(/[^A-Za-z0-9._/-]+/g, "_") } });
+});
+
+test("extracts the invoice total", async () => {
+  const total = await extractTotal(client, invoiceText);
+  expect(total).toBe(1249.5);
+});</code></pre>
+<pre><code>retake record -- npx vitest run
+retake replay -- npx vitest run</code></pre>
+
+      <h2 id="endpoints">Responses API, streaming, structured outputs, embeddings</h2>
+      <p>retake proxies HTTP, so it doesn't need to understand each endpoint — anything under the base URL is recorded:</p>
+      <ul>
+        <li><strong>Responses API</strong> (<code>/v1/responses</code>) and <strong>Chat Completions</strong> (<code>/v1/chat/completions</code>) both work, including tool and function calls.</li>
+        <li><strong>Streaming</strong> (<code>stream=True</code>): server-sent events are stored as whole events and replayed byte-for-byte, so your streaming code sees exactly what it saw live.</li>
+        <li><strong>Structured outputs</strong> (<code>response_format</code> with a JSON schema): the schema is part of the request, so changing it is detected as a change, and the recorded JSON is what your parser is tested against.</li>
+        <li><strong>Embeddings</strong> (<code>/v1/embeddings</code>): replayed exactly, which makes retrieval in RAG tests deterministic too.</li>
+        <li><strong>Audio and files:</strong> binary bodies are stored as base64.</li>
+      </ul>
+
+      <h2 id="tips">Tips</h2>
+      <ul>
+        <li><strong>Pin model versions.</strong> Use dated snapshot model names where available, so model changes happen when you decide.</li>
+        <li><strong>Ignore volatile fields.</strong> If you send a <code>user</code> or <code>metadata</code> value that changes every run, add <code>--ignore user</code> or <code>--ignore metadata.request_id</code>.</li>
+        <li><strong>Don't assert exact prose.</strong> Assert on structure and key facts, so re-recording doesn't break tests.</li>
+        <li><strong>Errors aren't recorded by default.</strong> <code>429</code> and <code>5xx</code> responses are passed through but not saved, so SDK retries don't end up in your cassettes. To test your error handling with real error bodies, use <code>--record-errors</code>.</li>
+        <li><strong>OpenAI-compatible providers</strong> — Ollama, vLLM, Groq, OpenRouter and others — work the same way with <code>--upstream name=url</code>.</li>
+      </ul>
+
+      <div class="next-steps">
+        <h2>Next steps</h2>
+        <ul>
+          <li><a href="{{base}}docs/#quick-start">Quick start</a></li>
+          <li><a href="{{base}}guides/llm-tests-in-ci/">Run LLM tests in CI without API keys</a></li>
+          <li><a href="{{base}}guides/claude-api-testing/">How to test Claude API code</a></li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</main>

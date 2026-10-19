@@ -1,0 +1,97 @@
+---
+title: How to Test Claude API Code: Deterministic Anthropic SDK Tests
+og_title: How to test Claude API code
+description: Deterministic tests for apps built on the Claude API: record Anthropic Messages API calls, streaming events and tool use loops once, then replay them offline.
+path: guides/claude-api-testing/
+type: article
+breadcrumb: Guides=guides/; Testing Claude API code=guides/claude-api-testing/
+published: 2026-10-19
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <article class="prose">
+      <p class="tag">Anthropic</p>
+      <h1>How to test Claude API code</h1>
+      <div class="article-meta"><span>Updated October 2026</span><span>7 min read</span></div>
+      <p class="lead">Apps built on Claude often do more than one call: they stream responses into a UI, run tool use loops, or chain several prompts together. This guide shows how to test that code against real Claude responses — deterministically, offline, and without spending tokens on every run.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ol>
+          <li><a href="#setup">Setup</a></li>
+          <li><a href="#python">Python example</a></li>
+          <li><a href="#tool-use">Tool use loops</a></li>
+          <li><a href="#streaming">Streaming</a></li>
+          <li><a href="#features">Thinking, prompt caching and other features</a></li>
+          <li><a href="#tips">Tips</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="setup">Setup</h2>
+      <p>The official Anthropic SDKs for Python and TypeScript read the <code>ANTHROPIC_BASE_URL</code> environment variable. <a href="{{base}}">retake</a> sets it for the command it runs, so every Messages API call goes through the proxy — no code changes.</p>
+<pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh
+
+ANTHROPIC_API_KEY=sk-ant-... retake record -- pytest   # once
+retake replay -- pytest                                # every run after</code></pre>
+
+      <h2 id="python">Python example</h2>
+<pre><code>import anthropic, re, pytest
+
+@pytest.fixture
+def client(request):
+    session = re.sub(r"[^A-Za-z0-9._/-]", "_", request.node.nodeid.replace("::", "/"))
+    return anthropic.Anthropic(default_headers={"x-retake-session": session})
+
+def summarize(client, text):
+    message = client.messages.create(
+        model="claude-sonnet-5-5",
+        max_tokens=300,
+        system="Summarize the support ticket in one sentence.",
+        messages=[{"role": "user", "content": text}],
+    )
+    return message.content[0].text
+
+def test_summary_mentions_the_product(client):
+    summary = summarize(client, "My Pro plan invoice shows the wrong VAT number.")
+    assert "invoice" in summary.lower()</code></pre>
+      <p>Each test records into its own cassette, such as <code>cassettes/tests/test_support.py/test_summary_mentions_the_product.json</code>.</p>
+
+      <h2 id="tool-use">Tool use loops</h2>
+      <p>A tool use loop sends Claude's <code>tool_use</code> blocks back as <code>tool_result</code> blocks until <code>stop_reason</code> isn't <code>tool_use</code>. On replay:</p>
+      <ol>
+        <li>The first response is the recorded one, including the same <code>tool_use</code> block and ID.</li>
+        <li>Your code runs the same tool with the same input. If the tool is deterministic in tests, it returns the same result.</li>
+        <li>The follow-up request is identical to the recorded one, so it matches — and the loop replays to the end.</li>
+      </ol>
+      <p>If a tool's output changes, the follow-up request changes, and retake reports exactly which step diverged with a diff. See <a href="{{base}}guides/testing-ai-agents/">How to test AI agents deterministically</a> for making tools deterministic and choosing what to assert.</p>
+
+      <h2 id="streaming">Streaming</h2>
+      <p>With <code>stream=True</code> or <code>client.messages.stream(...)</code>, the API sends server-sent events: <code>message_start</code>, <code>content_block_start</code>, <code>content_block_delta</code>, <code>content_block_stop</code>, <code>message_delta</code> and <code>message_stop</code>. retake stores each event whole and replays the stream byte-for-byte, so the SDK's stream helpers and your UI code see exactly the live sequence.</p>
+      <p>Replays are instant by default. To test timeouts or progressive rendering with realistic pacing, record with <code>--record-timing</code> and replay with <code>--timing realtime</code>.</p>
+
+      <h2 id="features">Thinking, prompt caching and other features</h2>
+      <ul>
+        <li><strong>Extended thinking.</strong> Thinking blocks are part of the response and are replayed as recorded. If your code sends them back in the next turn, that request matches the recording too.</li>
+        <li><strong>Prompt caching.</strong> <code>cache_control</code> markers are part of the request body, so they're matched like everything else. Replayed responses include the usage numbers from the recording.</li>
+        <li><strong>Message Batches and Files.</strong> These are ordinary HTTP endpoints and are recorded too, though polling loops make cassettes long; consider fixtures for those.</li>
+      </ul>
+
+      <h2 id="tips">Tips</h2>
+      <ul>
+        <li>Pin the model name you test with, and re-record deliberately when you upgrade.</li>
+        <li>The <code>x-api-key</code> header is never written to cassettes, and key-like strings in bodies are redacted. Run <code>retake check</code> before committing.</li>
+        <li>In CI, <code>retake replay</code> sets a placeholder <code>ANTHROPIC_API_KEY</code> so the SDK starts without a real key.</li>
+        <li>Frameworks built on the official SDK usually honor <code>ANTHROPIC_BASE_URL</code> too. If yours doesn't, pass the base URL explicitly from the environment.</li>
+      </ul>
+
+      <div class="next-steps">
+        <h2>Next steps</h2>
+        <ul>
+          <li><a href="{{base}}docs/#quick-start">Quick start</a></li>
+          <li><a href="{{base}}guides/testing-ai-agents/">How to test AI agents deterministically</a></li>
+          <li><a href="{{base}}guides/llm-tests-in-ci/">Run LLM tests in CI without API keys</a></li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</main>

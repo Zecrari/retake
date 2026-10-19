@@ -1,0 +1,49 @@
+---
+title: LLM Testing Guides: AI Agents, OpenAI, Claude & CI | retake
+og_title: LLM testing guides — retake
+description: Practical guides to testing LLM apps and AI agents in 2026: deterministic agent tests, OpenAI and Claude API testing, running LLM tests in CI without API keys.
+path: guides/
+type: website
+breadcrumb: Guides=guides/
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <div class="section-head" style="margin-top:16px">
+      <p class="kicker">Guides</p>
+      <h1 style="margin-top:0">Testing LLM apps and AI agents</h1>
+      <p>Practical, tool-agnostic guides for making tests of AI features fast, cheap and trustworthy. Each one ends with how to do it with retake, but the ideas apply whatever you use.</p>
+    </div>
+    <div class="grid grid-2">
+      <a class="card guide-card" href="{{base}}guides/testing-ai-agents/">
+        <span class="tag">AI agents</span>
+        <h2 style="font-size:21px">How to test AI agents deterministically</h2>
+        <p>Why agent tests are flaky, how record/replay makes a whole multi-step, tool-calling trajectory repeatable, and what to assert.</p>
+        <span class="more">Read the guide →</span>
+      </a>
+      <a class="card guide-card" href="{{base}}guides/llm-tests-in-ci/">
+        <span class="tag">CI/CD</span>
+        <h2 style="font-size:21px">Run LLM tests in CI without API keys</h2>
+        <p>Deterministic pipelines that work for fork pull requests, cost nothing per run, and still catch model drift with a scheduled live job.</p>
+        <span class="more">Read the guide →</span>
+      </a>
+      <a class="card guide-card" href="{{base}}guides/openai-api-testing/">
+        <span class="tag">OpenAI</span>
+        <h2 style="font-size:21px">How to test code that calls the OpenAI API</h2>
+        <p>Chat Completions, the Responses API, streaming, structured outputs and embeddings — tested without paying for every run.</p>
+        <span class="more">Read the guide →</span>
+      </a>
+      <a class="card guide-card" href="{{base}}guides/claude-api-testing/">
+        <span class="tag">Anthropic</span>
+        <h2 style="font-size:21px">How to test Claude API code</h2>
+        <p>Deterministic tests for the Anthropic Messages API: streaming events, tool use loops and extended thinking.</p>
+        <span class="more">Read the guide →</span>
+      </a>
+      <a class="card guide-card" href="{{base}}guides/vcr-for-llms/">
+        <span class="tag">Concepts</span>
+        <h2 style="font-size:21px">VCR for LLMs: record/replay vs mocks vs live calls</h2>
+        <p>The trade-offs of each testing strategy, why generic HTTP recorders struggle with LLM APIs, and how to choose.</p>
+        <span class="more">Read the guide →</span>
+      </a>
+    </div>
+  </div>
+</main>

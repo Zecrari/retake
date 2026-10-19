@@ -1,0 +1,89 @@
+---
+title: VCR for LLMs: Record/Replay vs Mocks vs Live API Calls
+og_title: VCR for LLMs — record/replay vs mocks vs live calls
+description: How record/replay testing (VCR) applies to LLM APIs, why generic HTTP recorders struggle with streaming and secrets, and when to use mocks, live calls or recordings.
+path: guides/vcr-for-llms/
+type: article
+breadcrumb: Guides=guides/; VCR for LLMs=guides/vcr-for-llms/
+published: 2026-10-19
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <article class="prose">
+      <p class="tag">Concepts</p>
+      <h1>VCR for LLMs: record/replay vs mocks vs live calls</h1>
+      <div class="article-meta"><span>Updated October 2026</span><span>7 min read</span></div>
+      <p class="lead">"VCR" testing — record real HTTP traffic once, replay it in later test runs — has been around for over a decade. LLM APIs make it more useful than ever, and also expose where general-purpose recorders fall short. Here's how the approaches compare, and how to choose.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ol>
+          <li><a href="#what-is-vcr">What is VCR-style testing?</a></li>
+          <li><a href="#comparison">Mocks vs live calls vs recordings</a></li>
+          <li><a href="#why-llms">Why LLM APIs are a special case</a></li>
+          <li><a href="#generic-tools">Can I use VCR.py, Polly.js or nock?</a></li>
+          <li><a href="#choosing">How to choose</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="what-is-vcr">What is VCR-style testing?</h2>
+      <p>The idea comes from Ruby's VCR library and spread to VCR.py, Polly.js, nock's back mode and others. The first time a test runs, real HTTP requests are made and the responses are saved to a "cassette" file. Every later run serves responses from the cassette instead of the network.</p>
+      <p>You get real data — not responses you invented — with the speed and determinism of a mock.</p>
+
+      <h2 id="comparison">Mocks vs live calls vs recordings</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">Hand-written mocks</th><th scope="col">Live API calls</th><th scope="col">Recordings</th></tr></thead>
+          <tbody>
+            <tr><td>Uses real model output</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes, from when recorded</td></tr>
+            <tr><td>Deterministic</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
+            <tr><td>Speed</td><td class="yes">Instant</td><td class="no">Seconds per call</td><td class="yes">Instant</td></tr>
+            <tr><td>Cost per run</td><td class="yes">Free</td><td class="no">Tokens</td><td class="yes">Free</td></tr>
+            <tr><td>Needs a key in CI</td><td class="yes">No</td><td class="no">Yes</td><td class="yes">No</td></tr>
+            <tr><td>Effort for multi-step agents</td><td class="no">High</td><td class="yes">None</td><td class="yes">One recording run</td></tr>
+            <tr><td>Notices model changes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">Only when re-recorded</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>No single column wins everything. Recordings cover the most ground for everyday tests; a scheduled live run covers the last row.</p>
+
+      <h2 id="why-llms">Why LLM APIs are a special case</h2>
+      <p>LLM traffic stresses record/replay in ways typical REST APIs don't:</p>
+      <ul>
+        <li><strong>Streaming.</strong> Most LLM apps stream. Responses arrive as server-sent events, and replay has to reproduce the event stream faithfully — not just a final JSON body — or streaming code isn't really tested.</li>
+        <li><strong>Huge, nested JSON requests.</strong> A request carries the whole conversation, tool definitions and schemas. Matching must ignore formatting and key order, and when a match fails you need a readable diff, not "no cassette found".</li>
+        <li><strong>Secrets.</strong> API keys travel in headers, and prompts sometimes contain tokens. Cassettes get committed to git, so they must be scrubbed by default.</li>
+        <li><strong>Retries.</strong> SDKs automatically retry <code>429</code> and <code>5xx</code> responses. A recorder that saves those — or a replayer that fails with a <code>500</code> — produces confusing, slow failures.</li>
+        <li><strong>Many languages.</strong> One team may call models from a Python backend, a TypeScript frontend and a Go worker. Library-based recorders need one setup per language.</li>
+      </ul>
+
+      <h2 id="generic-tools">Can I use VCR.py, Polly.js or nock?</h2>
+      <p>Yes, and they're excellent general-purpose tools. If your whole codebase is in one language and you're happy to configure header filtering, body matching and streaming support yourself, they can work well.</p>
+      <p>A dedicated LLM recorder like <a href="{{base}}">retake</a> takes a different approach: it runs as a local HTTP proxy that the official SDKs reach through <code>OPENAI_BASE_URL</code> and <code>ANTHROPIC_BASE_URL</code>. That gives you:</p>
+      <ul>
+        <li>One setup for every language and test runner.</li>
+        <li>Byte-for-byte replay of streams.</li>
+        <li>Order-insensitive JSON matching, with a diff against the closest recording when something changes.</li>
+        <li>Headers never stored and secrets redacted, plus a <code>retake check</code> command for CI.</li>
+        <li>Mismatches returned as <code>404</code>, so SDKs don't retry them.</li>
+      </ul>
+
+      <h2 id="choosing">How to choose</h2>
+      <ul>
+        <li><strong>Testing a parser, validator or prompt template in isolation?</strong> A small mock is simplest.</li>
+        <li><strong>Testing code that depends on what the model actually says</strong> — an agent loop, a RAG pipeline, structured extraction? Record and replay.</li>
+        <li><strong>Need to know whether output is good, or whether a new model is better?</strong> That's an eval, and it should call the model live (on a schedule or on demand, not every push).</li>
+        <li><strong>Want to know when the provider changed the model?</strong> A weekly live re-record, as described in <a href="{{base}}guides/llm-tests-in-ci/#drift-job">the CI guide</a>.</li>
+      </ul>
+
+      <div class="next-steps">
+        <h2>Next steps</h2>
+        <ul>
+          <li><a href="{{base}}docs/">retake documentation</a></li>
+          <li><a href="{{base}}guides/testing-ai-agents/">How to test AI agents deterministically</a></li>
+          <li><a href="{{base}}guides/openai-api-testing/">How to test code that calls the OpenAI API</a></li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</main>

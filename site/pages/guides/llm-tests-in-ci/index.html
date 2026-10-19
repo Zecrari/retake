@@ -1,0 +1,128 @@
+---
+title: Run LLM Tests in CI Without API Keys (GitHub Actions Guide)
+og_title: Run LLM tests in CI without API keys
+description: Make CI for LLM apps and AI agents deterministic and free: replay recorded API calls in GitHub Actions, support fork PRs, and catch drift with a weekly live job.
+path: guides/llm-tests-in-ci/
+type: article
+breadcrumb: Guides=guides/; LLM tests in CI=guides/llm-tests-in-ci/
+published: 2026-10-19
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <article class="prose">
+      <p class="tag">CI/CD</p>
+      <h1>Run LLM tests in CI without API keys</h1>
+      <div class="article-meta"><span>Updated October 2026</span><span>7 min read</span></div>
+      <p class="lead">Calling a real LLM API from CI works — until it doesn't. Pipelines get flaky, bills grow with every push, rate limits fail builds at random, and pull requests from forks can't run the tests at all. Here's how to make LLM tests in CI deterministic and free, while still noticing when the model changes.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ol>
+          <li><a href="#problems">What goes wrong with live calls in CI</a></li>
+          <li><a href="#strategy">The strategy: replay in CI, record locally</a></li>
+          <li><a href="#github-actions">GitHub Actions setup</a></li>
+          <li><a href="#secrets">Keeping secrets out of cassettes</a></li>
+          <li><a href="#drift-job">A weekly live job for model drift</a></li>
+          <li><a href="#other-ci">GitLab CI and others</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="problems">What goes wrong with live calls in CI</h2>
+      <ul>
+        <li><strong>Flakiness.</strong> Model output varies between runs, so the same commit can pass and then fail. Teams learn to click "re-run", and stop trusting red builds.</li>
+        <li><strong>Cost.</strong> Every push, every branch, every matrix job and every retry pays for tokens. Agent tests that make dozens of calls each are the worst offenders.</li>
+        <li><strong>Rate limits.</strong> Parallel CI jobs hit <code>429 Too Many Requests</code> and fail for reasons that have nothing to do with your change.</li>
+        <li><strong>Secrets and forks.</strong> On GitHub, workflows triggered by pull requests from forks don't receive your repository secrets. Tests that need an API key simply can't run for outside contributors — or you're tempted into risky workarounds.</li>
+        <li><strong>Speed.</strong> Seconds per call turn a 30-second suite into a 10-minute one.</li>
+      </ul>
+
+      <h2 id="strategy">The strategy: replay in CI, record locally</h2>
+      <ol>
+        <li>Developers record API calls once with a real key, using a record/replay proxy such as <a href="{{base}}">retake</a>.</li>
+        <li>The recordings (cassettes) are committed with the code, and prompt changes show up in code review.</li>
+        <li>CI replays them strictly: no network access to the LLM API, no key, and any call without a recording <strong>fails the build</strong> instead of silently going live.</li>
+        <li>A scheduled job runs live once a week to catch model drift.</li>
+      </ol>
+
+      <h2 id="github-actions">GitHub Actions setup</h2>
+      <p>retake ships a GitHub Action that installs a verified binary on Linux, macOS or Windows runners:</p>
+<pre><code>name: Test
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: Zecrari/retake@v0
+      - run: retake check                 # cassettes are valid and secret-free
+      - run: retake replay -- npm test    # no key, no network, no cost</code></pre>
+      <p>That's the whole change. Notice what's <em>missing</em>: there's no <code>OPENAI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> secret. In replay mode retake sets placeholder keys so SDKs start normally, and since nothing reaches the real API, fork pull requests run the full suite too.</p>
+      <h3>What a failure looks like</h3>
+      <p>If someone changes a prompt without re-recording, the build fails with a precise diff instead of a mysterious assertion error:</p>
+<pre><code>no recording in session `default` matches POST /openai/v1/chat/completions (closest: step 1)
+-      "content": "Summarize in one short sentence.",
++      "content": "Summarize in one sentence of at most 20 words.",
+retake: 0 replayed, 0 recorded, 1 unmatched</code></pre>
+      <p>The fix is to run <code>retake auto -- npm test</code> locally (it records only what's missing), and commit the updated cassette — which reviewers then see in the pull request.</p>
+
+      <h2 id="secrets">Keeping secrets out of cassettes</h2>
+      <p>Committing recordings of API traffic needs care. retake handles the main risks for you:</p>
+      <ul>
+        <li>Request headers — <code>Authorization</code>, <code>x-api-key</code> and the rest — are never written to disk.</li>
+        <li>Strings in request and response bodies that look like API keys, tokens or private keys are replaced with <code>[REDACTED]</code>.</li>
+        <li><code>retake check</code> fails the build if a cassette still looks like it contains a secret. Run it in CI (as above) and as a <a href="{{base}}docs/#secrets">pre-commit hook</a>.</li>
+      </ul>
+      <div class="callout warn">Pattern-based redaction can't recognize personal data in prompts. Record with synthetic test data, and review cassettes like any other code.</div>
+
+      <h2 id="drift-job">A weekly live job for model drift</h2>
+      <p>Replays freeze model behavior at recording time. To find out when the provider changes something, run the suite live on a schedule — with the API key stored as a secret that only this trusted, scheduled workflow uses:</p>
+<pre><code>name: Live LLM check
+on:
+  schedule:
+    - cron: "0 6 * * 1"     # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: npm ci
+      - uses: Zecrari/retake@v0
+      - run: retake record -- npm test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - run: retake check
+      - name: Show what changed
+        run: git diff --stat -- cassettes/</code></pre>
+      <p>If the live run fails, or the cassette diff shows meaningful changes, the model's behavior has moved. Review the diff, then commit the new recordings (or open a pull request with them) when you're happy.</p>
+
+      <h2 id="other-ci">GitLab CI and others</h2>
+      <p>Anywhere you can run a shell, you can install retake with the script:</p>
+<pre><code># .gitlab-ci.yml
+test:
+  image: node:22
+  script:
+    - curl -fsSL https://zecrari.github.io/retake/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    - npm ci
+    - retake check
+    - retake replay -- npm test</code></pre>
+      <p>Pin a version for reproducible pipelines with <code>RETAKE_VERSION=v0.1.0</code>. The script verifies the download's SHA-256 checksum.</p>
+
+      <div class="next-steps">
+        <h2>Next steps</h2>
+        <ul>
+          <li><a href="{{base}}docs/#ci">CI setup reference</a></li>
+          <li><a href="{{base}}guides/testing-ai-agents/">How to test AI agents deterministically</a></li>
+          <li><a href="{{base}}guides/openai-api-testing/">How to test code that calls the OpenAI API</a></li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</main>

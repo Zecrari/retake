@@ -1,0 +1,250 @@
+---
+title: retake Documentation: Record & Replay LLM API Calls in Tests
+og_title: retake documentation
+description: Install and use retake to record OpenAI, Claude and OpenAI-compatible API calls and replay them in tests: modes, sessions, matching, streaming, secrets, CI and CLI.
+path: docs/
+type: article
+breadcrumb: Documentation=docs/
+published: 2026-10-19
+---
+<div class="wrap docs-layout">
+  <nav class="docs-nav" aria-label="Documentation">
+    <p>Getting started</p>
+    <div class="nav-group">
+      <a href="#introduction">Introduction</a>
+      <a href="#install">Installation</a>
+      <a href="#quick-start">Quick start</a>
+    </div>
+    <p>Guides</p>
+    <div class="nav-group">
+      <a href="#modes">Modes</a>
+      <a href="#sessions">Sessions</a>
+      <a href="#matching">Matching</a>
+      <a href="#streaming">Streaming</a>
+      <a href="#upstreams">Providers</a>
+      <a href="#secrets">Secrets</a>
+      <a href="#ci">CI setup</a>
+    </div>
+    <p>Reference</p>
+    <div class="nav-group">
+      <a href="#cassettes">Cassette format</a>
+      <a href="#cli">CLI</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+    </div>
+  </nav>
+
+  <main id="main" class="prose">
+    <h1 id="introduction">retake documentation</h1>
+    <p>retake records the HTTP calls your code makes to LLM APIs and replays them in later runs. Your tests get real model output with the speed, cost and determinism of a mock. It runs as a small local proxy, so it works with any language and any SDK, without code changes.</p>
+    <div class="callout">New here? Jump to <a href="#quick-start">Quick start</a> — it takes about a minute. Looking for the bigger picture? See the <a href="{{base}}guides/">guides</a> on testing AI agents, CI and more.</div>
+
+    <h2 id="install">Installation<a class="heading-anchor" href="#install" aria-label="Link to Installation">#</a></h2>
+    <h3>macOS and Linux</h3>
+<pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh</code></pre>
+    <p>Installs to <code>~/.local/bin</code>. Set <code>RETAKE_INSTALL_DIR</code> to change that, or <code>RETAKE_VERSION=v0.1.0</code> to pin a version. The script verifies the SHA-256 checksum of the download.</p>
+    <h3>Windows</h3>
+<pre><code>irm https://zecrari.github.io/retake/install.ps1 | iex</code></pre>
+    <h3>Other options</h3>
+    <ul>
+      <li>Download an archive from <a href="https://github.com/Zecrari/retake/releases">GitHub Releases</a> (Linux x86_64/arm64, macOS Intel/Apple silicon, Windows x86_64).</li>
+      <li>Build from source with Rust 1.88+: <code>cargo install --git https://github.com/Zecrari/retake --locked</code></li>
+      <li>In GitHub Actions: <code>uses: Zecrari/retake@v0</code> (see <a href="#ci">CI setup</a>).</li>
+    </ul>
+
+    <h2 id="quick-start">Quick start<a class="heading-anchor" href="#quick-start" aria-label="Link to Quick start">#</a></h2>
+    <ol>
+      <li><strong>Record.</strong> Run your tests through retake with a real API key. Calls go to the real API and are saved to <code>cassettes/default.json</code>.
+<pre><code>OPENAI_API_KEY=sk-... retake record -- pytest</code></pre></li>
+      <li><strong>Replay.</strong> Run the same tests again. Every call is served from the cassette; nothing leaves your machine.
+<pre><code>retake replay -- pytest</code></pre></li>
+      <li><strong>Commit</strong> the <code>cassettes/</code> directory, and use <code>retake replay</code> in CI.</li>
+    </ol>
+    <p>Anything after <code>--</code> is the command to run: <code>npm test</code>, <code>go test ./...</code>, <code>python app.py</code>, a shell script. retake starts a proxy on a free port, runs the command with the right environment variables, and prints a summary when it exits:</p>
+<pre><code>retake: 12 replayed, 0 recorded, 0 unmatched</code></pre>
+
+    <h2 id="modes">Modes<a class="heading-anchor" href="#modes" aria-label="Link to Modes">#</a></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Mode</th><th scope="col">Call already recorded</th><th scope="col">New call</th><th scope="col">Use it for</th></tr></thead>
+        <tbody>
+          <tr><td><code>record</code></td><td>— (each session starts empty)</td><td>Forwarded and saved</td><td>Creating or refreshing cassettes</td></tr>
+          <tr><td><code>replay</code></td><td>Served from the cassette</td><td><strong>Fails</strong> with a diff</td><td>CI, and any run that must not hit the network</td></tr>
+          <tr><td><code>auto</code></td><td>Served from the cassette</td><td>Forwarded and appended</td><td>Day-to-day development</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>In <code>replay</code>, the run exits with code <code>1</code> if any call had no recording, even if your tests passed — so a test that silently swallowed the error can't hide it.</p>
+    <p>Responses with status <code>429</code> or <code>5xx</code> are passed through but not recorded, so SDK retries don't end up in cassettes. Use <code>--record-errors</code> if you want to test error handling with real error responses.</p>
+
+    <h2 id="sessions">Sessions<a class="heading-anchor" href="#sessions" aria-label="Link to Sessions">#</a></h2>
+    <p>A session is one cassette file. By default every call goes to the <code>default</code> session (<code>cassettes/default.json</code>); change it with <code>--session</code>.</p>
+    <p>For larger suites, give each test its own cassette by sending the <code>x-retake-session</code> header. retake strips the header before forwarding. Names may contain letters, digits, <code>-</code>, <code>_</code>, <code>.</code> and <code>/</code>, and slashes create folders.</p>
+    <h3>pytest</h3>
+<pre><code>import re, pytest
+from openai import OpenAI
+
+@pytest.fixture
+def client(request):
+  session = re.sub(r"[^A-Za-z0-9._/-]", "_", request.node.nodeid.replace("::", "/"))
+  return OpenAI(default_headers={"x-retake-session": session})</code></pre>
+    <h3>Vitest</h3>
+<pre><code>import OpenAI from "openai";
+import { beforeEach, expect } from "vitest";
+
+let client: OpenAI;
+beforeEach(() => {
+const name = expect.getState().currentTestName ?? "default";
+client = new OpenAI({
+  defaultHeaders: { "x-retake-session": name.replace(/[^A-Za-z0-9._/-]+/g, "_") },
+});
+});</code></pre>
+    <h3>Go</h3>
+<pre><code>client := openai.NewClient(
+  option.WithHeader("x-retake-session", "billing/"+t.Name()),
+)</code></pre>
+
+    <h2 id="matching">Matching<a class="heading-anchor" href="#matching" aria-label="Link to Matching">#</a></h2>
+    <p>A replayed call matches a recording when the method, upstream, path, query string and body are the same. JSON bodies are compared after sorting object keys, so formatting and key order never matter.</p>
+    <h3>Ignoring volatile fields</h3>
+    <p>If your requests include values that change every run — request IDs, timestamps, random seeds — ignore them with <code>--ignore</code> and a dotted path. Arrays are traversed automatically, so <code>messages.id</code> ignores the <code>id</code> of every message.</p>
+<pre><code>retake replay --ignore metadata.request_id --ignore user -- npm test</code></pre>
+    <h3>Repeated and parallel calls</h3>
+    <p>Each recording is used once per run. If your code makes the same call three times, the three recorded responses are replayed in the order they were recorded. Calls that differ are matched independently, so parallel requests work regardless of timing.</p>
+    <h3>When nothing matches</h3>
+    <p>In <code>replay</code> mode, an unmatched call gets a <code>404</code> response with error type <code>retake_no_match</code>, and retake prints a diff against the closest unused recording — preferring one to the same endpoint:</p>
+<pre><code>no recording in session `default` matches POST /openai/v1/chat/completions (closest: step 1)
+--- recorded (step 1)
++++ actual
+@@ -2,7 +2,7 @@
+ "messages": [
+   {
+-      "content": "What is the status of order 1042?",
++      "content": "Where is order 1042?",
+     "role": "user"</code></pre>
+    <p>retake deliberately uses a <code>4xx</code> status: the OpenAI and Anthropic SDKs automatically retry <code>5xx</code> responses, which would turn a clear failure into a slow one.</p>
+
+    <h2 id="streaming">Streaming<a class="heading-anchor" href="#streaming" aria-label="Link to Streaming">#</a></h2>
+    <p>Server-sent event streams (<code>"stream": true</code>) are passed through to your code live while recording, and stored as complete events — however the bytes arrived on the network. On replay, the events are sent back byte-for-byte.</p>
+    <p>Replays are instant by default. To reproduce the original pacing — for example to test timeouts or a streaming UI — record with <code>--record-timing</code> and replay with <code>--timing realtime</code>. Timing is off by default because it changes on every recording and makes cassette diffs noisy.</p>
+
+    <h2 id="upstreams">Providers and upstreams<a class="heading-anchor" href="#upstreams" aria-label="Link to Providers">#</a></h2>
+    <p>Requests reach retake at <code>/&lt;upstream&gt;/&lt;path&gt;</code>, and are forwarded to that upstream's base URL. Two upstreams are built in:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Upstream</th><th scope="col">Forwards to</th><th scope="col">Variable set for your command</th></tr></thead>
+        <tbody>
+          <tr><td><code>openai</code></td><td><code>https://api.openai.com</code></td><td><code>OPENAI_BASE_URL=http://127.0.0.1:&lt;port&gt;/openai/v1</code></td></tr>
+          <tr><td><code>anthropic</code></td><td><code>https://api.anthropic.com</code></td><td><code>ANTHROPIC_BASE_URL=http://127.0.0.1:&lt;port&gt;/anthropic</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>retake also sets <code>RETAKE_URL</code>, <code>RETAKE_MODE</code> and <code>RETAKE_&lt;NAME&gt;_URL</code> for every upstream. In <code>replay</code> mode it sets placeholder values for <code>OPENAI_API_KEY</code> and <code>ANTHROPIC_API_KEY</code> when they're missing, so SDKs that require a key still start in CI.</p>
+    <h3>OpenAI-compatible APIs</h3>
+    <p>Add any other upstream with <code>--upstream name=url</code> — Ollama, vLLM, LM Studio, Groq, OpenRouter, Together, or your own gateway — and point your client at <code>$RETAKE_&lt;NAME&gt;_URL</code>:</p>
+<pre><code>retake record --upstream ollama=http://localhost:11434 -- python app.py
+# in app.py: OpenAI(base_url=os.environ["RETAKE_OLLAMA_URL"] + "/v1", api_key="ollama")</code></pre>
+    <p><code>--upstream</code> also overrides the built-ins, for example <code>--upstream openai=https://my-gateway.example.com</code>.</p>
+    <h3>Without a wrapped command</h3>
+    <p>Run retake with no command to keep the proxy up until Ctrl+C — useful for a dev server or a test runner you start separately. Pick a fixed port with <code>--port</code>; retake prints the variables to set.</p>
+<pre><code>retake replay --port 9000</code></pre>
+
+    <h2 id="secrets">Secrets<a class="heading-anchor" href="#secrets" aria-label="Link to Secrets">#</a></h2>
+    <ul>
+      <li><strong>Request headers are never stored.</strong> <code>Authorization</code>, <code>x-api-key</code>, <code>x-goog-api-key</code> and every other header stay out of cassettes.</li>
+      <li><strong>Bodies are redacted.</strong> Strings that look like OpenAI, Anthropic, Google, GitHub, AWS or Slack credentials, bearer tokens or private keys are replaced with <code>[REDACTED]</code> before saving. Matching applies the same redaction, so replays still match.</li>
+      <li><strong><code>retake check</code></strong> validates cassettes and scans them for secrets, exiting with code 1 if it finds any. <code>retake check --fix</code> redacts them in place.</li>
+    </ul>
+    <div class="callout warn">Redaction is pattern-based. It can't recognise personal data in prompts or unusual token formats — review cassettes before committing them.</div>
+    <h3>Pre-commit hook</h3>
+    <p>With the <a href="https://pre-commit.com">pre-commit</a> framework:</p>
+<pre><code>repos:
+- repo: https://github.com/Zecrari/retake
+  rev: v0.1.0
+  hooks:
+    - id: retake-check</code></pre>
+
+    <h2 id="ci">CI setup<a class="heading-anchor" href="#ci" aria-label="Link to CI setup">#</a></h2>
+    <h3>GitHub Actions</h3>
+<pre><code>jobs:
+test:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v5
+    - uses: Zecrari/retake@v0        # installs the latest release
+    - run: retake check
+    - run: retake replay -- npm test</code></pre>
+    <p>Pin a version with <code>with: { version: v0.1.0 }</code>. The action verifies the download's checksum and works on Linux, macOS and Windows runners. No API key secret is needed.</p>
+    <h3>Other CI systems</h3>
+<pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+retake check
+retake replay -- npm test</code></pre>
+
+    <h2 id="cassettes">Cassette format<a class="heading-anchor" href="#cassettes" aria-label="Link to Cassette format">#</a></h2>
+    <p>Each session is a pretty-printed JSON file. Interactions appear in the order they completed.</p>
+<pre><code>{
+"retake": 1,
+"session": "default",
+"interactions": [
+  {
+    "request": {
+      "method": "POST",
+      "upstream": "openai",
+      "path": "/v1/chat/completions",
+      "json": { "model": "gpt-4.1-mini", "messages": [ ... ] }
+    },
+    "response": {
+      "status": 200,
+      "content_type": "application/json",
+      "json": { "choices": [ ... ] }
+    }
+  }
+]
+}</code></pre>
+    <ul>
+      <li>Bodies are stored as <code>json</code> when they parse as JSON, <code>text</code> for other UTF-8, and <code>base64</code> for binary data such as audio.</li>
+      <li>Streamed responses have an <code>events</code> array instead of a body; each event's <code>data</code> is the raw SSE text, with an optional <code>t_ms</code> offset.</li>
+      <li><code>retake</code> is the format version. Newer versions of retake will keep reading older cassettes.</li>
+    </ul>
+    <p>Cassettes are meant to be read and reviewed, and you can edit them by hand — for example to shorten a long response.</p>
+
+    <h2 id="cli">CLI reference<a class="heading-anchor" href="#cli" aria-label="Link to CLI reference">#</a></h2>
+<pre><code>retake record [OPTIONS] [-- COMMAND...]
+retake replay [OPTIONS] [-- COMMAND...]
+retake auto   [OPTIONS] [-- COMMAND...]
+retake check  [PATHS...] [--fix]</code></pre>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Option</th><th scope="col">Default</th><th scope="col">Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>--cassettes &lt;DIR&gt;</code></td><td><code>cassettes</code></td><td>Cassette directory. Env: <code>RETAKE_CASSETTES</code></td></tr>
+          <tr><td><code>-s, --session &lt;NAME&gt;</code></td><td><code>default</code></td><td>Session for requests without the header. Env: <code>RETAKE_SESSION</code></td></tr>
+          <tr><td><code>-p, --port &lt;PORT&gt;</code></td><td><code>0</code> (any free)</td><td>Port to listen on. Env: <code>RETAKE_PORT</code></td></tr>
+          <tr><td><code>--host &lt;ADDR&gt;</code></td><td><code>127.0.0.1</code></td><td>Address to listen on</td></tr>
+          <tr><td><code>--upstream &lt;NAME=URL&gt;</code></td><td>openai, anthropic</td><td>Add or override an upstream. Repeatable.</td></tr>
+          <tr><td><code>--ignore &lt;FIELD&gt;</code></td><td>—</td><td>Dotted JSON path ignored when matching. Repeatable.</td></tr>
+          <tr><td><code>--timing &lt;fast|realtime&gt;</code></td><td><code>fast</code></td><td>Pacing of replayed streams</td></tr>
+          <tr><td><code>--record-timing</code></td><td>off</td><td>Store event timing while recording</td></tr>
+          <tr><td><code>--record-errors</code></td><td>off</td><td>Also record <code>429</code> and <code>5xx</code> responses</td></tr>
+          <tr><td><code>-v</code>, <code>-vv</code>, <code>-q</code></td><td>—</td><td>More or less logging. <code>RUST_LOG</code> overrides.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Exit codes</h3>
+    <ul>
+      <li>The wrapped command's exit code, if it failed.</li>
+      <li><code>1</code> if the command succeeded but <code>replay</code> had unmatched calls, or <code>retake check</code> found problems.</li>
+      <li><code>2</code> if retake itself failed (bad arguments, port in use, unreadable cassette).</li>
+    </ul>
+
+    <h2 id="troubleshooting">Troubleshooting<a class="heading-anchor" href="#troubleshooting" aria-label="Link to Troubleshooting">#</a></h2>
+    <h3>My calls go straight to the real API</h3>
+    <p>Your client isn't using the base URL variables. Check that you don't pass <code>base_url</code> / <code>baseURL</code> explicitly, or pass <code>os.environ["OPENAI_BASE_URL"]</code>. Run with <code>-v</code> to log every replayed call.</p>
+    <h3>Every replayed call fails to match</h3>
+    <p>Read the diff in the output. Usually a field changes every run — add <code>--ignore</code> for it. If your prompt really changed, re-record with <code>retake record</code> or <code>retake auto</code>.</p>
+    <h3>"recorded interaction(s) were never replayed"</h3>
+    <p>Your code made fewer calls than when it was recorded. That's a warning, not a failure; re-record to tidy the cassette.</p>
+    <h3>Something else?</h3>
+    <p><a href="https://github.com/Zecrari/retake/issues/new/choose">Open an issue</a> with your <code>retake --version</code>, OS, SDK and the output — but never an API key or an unchecked cassette.</p>
+  </main>
+</div>

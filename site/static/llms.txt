@@ -1,0 +1,30 @@
+# retake
+
+> retake is a free, open-source (MIT) record/replay proxy for LLM APIs. It records the OpenAI, Anthropic Claude and OpenAI-compatible API calls an application makes, saves them as readable JSON "cassettes", and replays them in later test runs — offline, deterministically, byte-for-byte, at zero API cost. It is a single static binary written in Rust and works with any language, because it is an HTTP proxy that the official SDKs reach through the OPENAI_BASE_URL and ANTHROPIC_BASE_URL environment variables.
+
+Key facts:
+
+- Commands: `retake record -- <test command>` (real calls, saved), `retake replay -- <test command>` (served from cassettes; unrecorded calls fail with a 404 and a diff), `retake auto` (replay recorded, record new), `retake check` (validate cassettes, scan for secrets).
+- Supports streaming (server-sent events replayed byte-for-byte), tool calling, structured outputs, the OpenAI Responses and Chat Completions APIs, embeddings, and the Anthropic Messages API.
+- One cassette per test via the `x-retake-session` request header.
+- Request headers are never stored; API keys and tokens in bodies are redacted.
+- Install: `curl -fsSL https://zecrari.github.io/retake/install.sh | sh` (macOS/Linux), `irm https://zecrari.github.io/retake/install.ps1 | iex` (Windows), or `uses: Zecrari/retake@v0` in GitHub Actions.
+- retake is not an evals framework; it makes tests repeatable. It complements evals and scheduled live runs.
+
+## Documentation
+
+- [Documentation](https://zecrari.github.io/retake/docs/): installation, modes, sessions, matching, streaming, providers, secrets, CI setup, cassette format, CLI reference, troubleshooting
+
+## Guides
+
+- [How to test AI agents deterministically](https://zecrari.github.io/retake/guides/testing-ai-agents/)
+- [Run LLM tests in CI without API keys](https://zecrari.github.io/retake/guides/llm-tests-in-ci/)
+- [How to test code that calls the OpenAI API](https://zecrari.github.io/retake/guides/openai-api-testing/)
+- [How to test Claude API code](https://zecrari.github.io/retake/guides/claude-api-testing/)
+- [VCR for LLMs: record/replay vs mocks vs live calls](https://zecrari.github.io/retake/guides/vcr-for-llms/)
+
+## Source
+
+- [GitHub repository](https://github.com/Zecrari/retake)
+- [Releases](https://github.com/Zecrari/retake/releases)
+- [Changelog](https://github.com/Zecrari/retake/blob/main/CHANGELOG.md)

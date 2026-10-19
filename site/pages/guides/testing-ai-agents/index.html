@@ -1,0 +1,147 @@
+---
+title: How to Test AI Agents Deterministically (2026 Guide)
+og_title: How to test AI agents deterministically
+description: AI agent tests are slow, costly and flaky. Learn how to record multi-step, tool-calling agent runs and replay them as fast, deterministic regression tests.
+path: guides/testing-ai-agents/
+type: article
+breadcrumb: Guides=guides/; Testing AI agents=guides/testing-ai-agents/
+published: 2026-10-19
+---
+<main id="main" class="article">
+  <div class="wrap">
+    <article class="prose">
+      <p class="tag">AI agents</p>
+      <h1>How to test AI agents deterministically</h1>
+      <div class="article-meta"><span>Updated October 2026</span><span>9 min read</span></div>
+      <p class="lead">An AI agent is a loop: the model decides on an action, your code runs a tool, the result goes back to the model, and so on until it answers. That loop is what makes agents powerful — and what makes them so hard to test. This guide shows how to turn a real agent run into a fast, repeatable regression test.</p>
+
+      <nav class="toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <ol>
+          <li><a href="#why-hard">Why agent tests are hard</a></li>
+          <li><a href="#approaches">Three ways to test an agent</a></li>
+          <li><a href="#why-replay-works">Why record/replay works for agents</a></li>
+          <li><a href="#step-by-step">Step by step</a></li>
+          <li><a href="#deterministic-tools">Make your tools deterministic</a></li>
+          <li><a href="#what-to-assert">What to assert</a></li>
+          <li><a href="#divergence">When a replay diverges</a></li>
+          <li><a href="#drift">Catching model drift</a></li>
+          <li><a href="#limits">Limits</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="why-hard">Why agent tests are hard</h2>
+      <p>A single LLM call is already non-deterministic. An agent multiplies the problem:</p>
+      <ul>
+        <li><strong>Errors compound.</strong> If step 2 returns slightly different text, step 3 sees a different conversation, picks a different tool, and the run takes a different path entirely.</li>
+        <li><strong>Runs are long and expensive.</strong> A single agent test can make 5–50 model calls. Run that suite on every push and the bill and wall-clock time add up fast.</li>
+        <li><strong>Failures are hard to read.</strong> When a live agent test fails, was it your code, the prompt, a model update, or plain randomness? With live calls you often can't tell.</li>
+        <li><strong>Mocks don't scale.</strong> Hand-writing fake responses for a 12-step tool-calling conversation is tedious, and the fakes drift away from what the real model does.</li>
+      </ul>
+
+      <h2 id="approaches">Three ways to test an agent</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Approach</th><th scope="col">Good for</th><th scope="col">Problems</th></tr></thead>
+          <tbody>
+            <tr><td>Live model calls</td><td>Evals, smoke tests, catching model changes</td><td>Slow, costly, flaky; needs keys in CI</td></tr>
+            <tr><td>Hand-written mocks</td><td>Unit tests of a single tool or parser</td><td>Invented output; painful for multi-step runs; drifts from reality</td></tr>
+            <tr><td>Record/replay</td><td>Regression tests of whole agent runs</td><td>Recordings need refreshing when prompts or models change</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>These aren't exclusive. A healthy setup uses mocks for small units, record/replay for agent regression tests in every CI run, and a small scheduled live job (or an eval suite) to notice when the model itself changes.</p>
+
+      <h2 id="why-replay-works">Why record/replay works for agents</h2>
+      <p>Recording works for agents because of a simple chain reaction:</p>
+      <ol>
+        <li>On replay, the model's first response is exactly the recorded one.</li>
+        <li>Your agent code is deterministic given its inputs, so it calls the same tools with the same arguments.</li>
+        <li>If the tools return the same results, the next request to the model is byte-for-byte the request that was recorded — so it matches, and the second response is replayed too.</li>
+        <li>…and so on, to the end of the run.</li>
+      </ol>
+      <p>The whole trajectory — every model call, tool call and tool result — replays exactly, in milliseconds, without a network connection. And the moment anything changes (a prompt, a tool's output, the order of steps), the next request no longer matches and you find out precisely where.</p>
+
+      <h2 id="step-by-step">Step by step</h2>
+      <p>This example uses <a href="{{base}}">retake</a>, a record/replay proxy that works with any language. Install it:</p>
+<pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh</code></pre>
+      <h3>1. Give each test its own cassette</h3>
+      <p>Send an <code>x-retake-session</code> header so every test records to its own file. Here's a TypeScript agent loop using the Anthropic SDK and Vitest:</p>
+<pre><code>import Anthropic from "@anthropic-ai/sdk";
+import { beforeEach, expect, test } from "vitest";
+
+let client: Anthropic;
+beforeEach(() => {
+  const name = expect.getState().currentTestName ?? "default";
+  client = new Anthropic({
+    defaultHeaders: { "x-retake-session": "agent/" + name.replace(/[^A-Za-z0-9._/-]+/g, "_") },
+  });
+});
+
+test("refund agent checks the order before refunding", async () => {
+  const result = await runRefundAgent(client, "Refund order 1042, it arrived broken");
+  expect(result.toolCalls.map((c) => c.name)).toEqual(["lookup_order", "issue_refund"]);
+  expect(result.toolCalls[1].input).toMatchObject({ order_id: "1042" });
+});</code></pre>
+      <h3>2. Record once</h3>
+<pre><code>ANTHROPIC_API_KEY=sk-ant-... retake record -- npx vitest run</code></pre>
+      <p>retake sets <code>ANTHROPIC_BASE_URL</code> (and <code>OPENAI_BASE_URL</code>) for the test command, forwards every call to the real API, and saves the run to <code>cassettes/agent/&lt;test name&gt;.json</code>.</p>
+      <h3>3. Replay forever</h3>
+<pre><code>retake replay -- npx vitest run</code></pre>
+      <p>No network, no key, no cost. If any call doesn't match a recording, the run fails with a diff.</p>
+      <h3>4. Commit the cassettes</h3>
+      <p>Request headers (where API keys live) are never stored, and key-like strings in bodies are redacted. Run <code>retake check</code> before committing to be sure.</p>
+
+      <h2 id="deterministic-tools">Make your tools deterministic</h2>
+      <p>The chain reaction only holds if your tools return the same results on every run. Common culprits and fixes:</p>
+      <ul>
+        <li><strong>Clocks.</strong> A tool that returns "now" changes the conversation every run. Inject a fixed clock in tests.</li>
+        <li><strong>Databases and IDs.</strong> Seed test data, and avoid random UUIDs in anything the model sees.</li>
+        <li><strong>External APIs.</strong> Tools that call other services (weather, search, your backend) need their own fixtures — retake records LLM traffic, not every HTTP call your tools make.</li>
+        <li><strong>Request metadata.</strong> If your agent puts a request ID or timestamp in the model request itself, tell retake to ignore it: <code>--ignore metadata.request_id</code>.</li>
+      </ul>
+
+      <h2 id="what-to-assert">What to assert</h2>
+      <p>Because replays are exact, you <em>could</em> assert on the precise wording of the final answer. Don't — the next re-record will break it. Assert on behavior instead:</p>
+      <ul>
+        <li><strong>The trajectory:</strong> which tools were called, in what order, with which key arguments.</li>
+        <li><strong>Structure:</strong> the final output parses, matches your schema, and contains the facts it must (an order number, a status).</li>
+        <li><strong>Side effects:</strong> what your code did with the answer — the refund issued, the ticket created.</li>
+        <li><strong>Guardrails:</strong> the agent did <em>not</em> call a dangerous tool, or stopped within a step budget.</li>
+      </ul>
+
+      <h2 id="divergence">When a replay diverges</h2>
+      <p>When a request doesn't match, retake responds with a <code>404</code> (deliberately not a <code>5xx</code>, which SDKs would silently retry) and prints a diff against the closest recording:</p>
+<pre><code>no recording in session `agent/refund` matches POST /anthropic/v1/messages (closest: step 3)
+-          "content": "{\"status\":\"delivered\"}",
++          "content": "{\"status\":\"delivered\",\"eta\":null}",</code></pre>
+      <p>Read the diff and decide:</p>
+      <ul>
+        <li><strong>You changed something on purpose</strong> (a prompt, a tool's output shape): re-record with <code>retake record</code>, or <code>retake auto</code> to record only the new calls, and review the cassette diff in your pull request.</li>
+        <li><strong>You didn't mean to change anything:</strong> you just found a regression — before it reached production.</li>
+      </ul>
+
+      <h2 id="drift">Catching model drift</h2>
+      <p>Recordings freeze the model's behavior at the time you recorded. That's the point, but it means replay tests won't notice when the provider updates a model. Two habits cover the gap:</p>
+      <ul>
+        <li><strong>Pin model versions</strong> in your code (dated snapshot names where your provider offers them), so changes happen when you choose.</li>
+        <li><strong>Run a scheduled live job</strong> — say weekly — that runs the suite with <code>retake record</code> against the real API. If it fails, or the re-recorded cassettes change meaningfully, you've caught drift. See <a href="{{base}}guides/llm-tests-in-ci/#drift-job">the CI guide</a> for a ready-made workflow.</li>
+      </ul>
+
+      <h2 id="limits">Limits</h2>
+      <ul>
+        <li>retake records HTTP calls to LLM APIs. It doesn't record tools that run in-process or over stdio (for example local MCP servers); give those deterministic fixtures.</li>
+        <li>Record/replay tests your code's handling of real model output. It doesn't tell you whether that output is <em>good</em> — that's what evals are for.</li>
+      </ul>
+
+      <div class="next-steps">
+        <h2>Next steps</h2>
+        <ul>
+          <li><a href="{{base}}docs/#quick-start">Quick start</a> — record and replay your first test in a minute.</li>
+          <li><a href="{{base}}guides/llm-tests-in-ci/">Run LLM tests in CI without API keys</a></li>
+          <li><a href="{{base}}guides/vcr-for-llms/">Record/replay vs mocks vs live calls</a></li>
+        </ul>
+      </div>
+    </article>
+  </div>
+</main>

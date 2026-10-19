@@ -20,14 +20,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Assemble site
+        with:
+          fetch-depth: 0 # full history, for per-page lastmod dates in the sitemap
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Build site
         run: |
-          mkdir -p _site
-          cp -r site/. _site/
+          python site/build.py _site
           cp install.sh install.ps1 _site/
-          # Stamp the sitemap with the date of the last change to the site.
-          lastmod=$(git log -1 --format=%cs -- site)
-          sed -i "s/__LASTMOD__/${lastmod}/g" _site/sitemap.xml
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
