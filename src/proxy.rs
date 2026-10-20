@@ -27,9 +27,11 @@ use tracing::{debug, error, info, warn};
 
 use crate::cassette::{Interaction, Payload, RecordedRequest, RecordedResponse};
 use crate::config::{Config, Mode, Timing};
+use crate::live::{Kind, Live, Update};
 use crate::matcher::Matcher;
 use crate::sse::{self, EventSplitter};
 use crate::store::{self, Lookup, Store};
+use crate::ui::{self, UiState};
 
 /// Picks the cassette for a request; defaults to `--session`.
 pub const SESSION_HEADER: &str = "x-retake-session";
@@ -38,6 +40,7 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 pub struct AppState {
     pub store: Store,
+    pub live: Arc<Live>,
     mode: Mode,
     upstreams: BTreeMap<String, String>,
     default_session: String,
@@ -58,6 +61,7 @@ impl AppState {
             .context("building HTTP client")?;
         Ok(AppState {
             store: Store::new(config.mode, &config.cassette_dir, Matcher::new(&config.ignore_fields)),
+            live: Arc::new(Live::default()),
             mode: config.mode,
             upstreams: config.upstreams.clone(),
             default_session: config.default_session.clone(),
@@ -71,7 +75,13 @@ impl AppState {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
-    Router::new().route("/__retake/health", get(|| async { "ok" })).fallback(handle).with_state(state)
+    // The dashboard is read-only while the proxy runs: the proxy owns the cassettes.
+    let dashboard = UiState::new(state.store.dir(), Some(state.live.clone()), Some(state.mode.as_str()), false);
+    Router::new()
+        .route("/__retake/health", get(|| async { "ok" }))
+        .merge(ui::router(Arc::new(dashboard)))
+        .fallback(handle)
+        .with_state(state)
 }
 
 pub struct Server {
@@ -99,6 +109,8 @@ pub async fn start(state: Arc<AppState>, bind: SocketAddr) -> anyhow::Result<Ser
 impl Server {
     /// Stops accepting requests and waits for in-flight recordings to be saved.
     pub async fn stop(self) -> anyhow::Result<()> {
+        // End dashboard feeds first, or their open connections would hold up shutdown.
+        self.state.live.close();
         let _ = self.shutdown.send(());
         let tasks = self.state.tasks.clone();
         tasks.close();
@@ -160,14 +172,32 @@ async fn proxy(state: Arc<AppState>, request: Request) -> Result<Response, Proxy
     if state.mode != Mode::Record {
         let lookup = state.store.lookup(&session, &recorded).map_err(ProxyError::cassette)?;
         match lookup {
-            Lookup::Hit(response) => {
+            Lookup::Hit { index, response } => {
                 debug!(session, "replayed {} /{}{}", recorded.method, upstream, path);
+                state.live.emit(Update {
+                    kind: Kind::Replayed,
+                    session: &session,
+                    method: &recorded.method,
+                    path: label_path(&recorded),
+                    status: Some(response.status),
+                    index: Some(index),
+                    detail: None,
+                });
                 return replay(*response, state.timing);
             }
             Lookup::Miss(miss) if state.mode == Mode::Replay => {
                 state.store.note_miss(&miss);
                 let message = miss.message();
                 error!("{message}");
+                state.live.emit(Update {
+                    kind: Kind::Missed,
+                    session: &session,
+                    method: &recorded.method,
+                    path: label_path(&recorded),
+                    status: Some(404),
+                    index: None,
+                    detail: Some(message.clone()),
+                });
                 return Err(ProxyError::new(StatusCode::NOT_FOUND, "no_match", message));
             }
             Lookup::Miss(_) => {}
@@ -194,20 +224,38 @@ async fn forward(
     strip_request_headers(&mut headers);
 
     let started = Instant::now();
-    let upstream = state
-        .client
-        .request(parts.method, &url)
-        .headers(headers)
-        .body(bytes)
-        .send()
-        .await
-        .map_err(|e| ProxyError::new(StatusCode::BAD_GATEWAY, "upstream_unreachable", format!("{url}: {e}")))?;
+    let sent = state.client.request(parts.method, &url).headers(headers).body(bytes).send().await;
+    let upstream = match sent {
+        Ok(upstream) => upstream,
+        Err(e) => {
+            let message = format!("{url}: {e}");
+            state.live.emit(Update {
+                kind: Kind::Failed,
+                session: &session,
+                method: &recorded.method,
+                path: label_path(&recorded),
+                status: None,
+                index: None,
+                detail: Some(message.clone()),
+            });
+            return Err(ProxyError::new(StatusCode::BAD_GATEWAY, "upstream_unreachable", message));
+        }
+    };
 
     let status = upstream.status();
     let content_type = header_str(upstream.headers(), header::CONTENT_TYPE).map(str::to_string);
     let should_record = state.record_errors || !(status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error());
     if !should_record {
         warn!(session, "not recording {status} from {url} (use --record-errors to keep error responses)");
+        state.live.emit(Update {
+            kind: Kind::Passed,
+            session: &session,
+            method: &recorded.method,
+            path: label_path(&recorded),
+            status: Some(status.as_u16()),
+            index: None,
+            detail: Some(format!("{status} passed through but not recorded (use --record-errors to keep it)")),
+        });
     }
 
     let mut response = Response::builder().status(status);
@@ -285,10 +333,27 @@ async fn forward(
 
 fn save(state: &AppState, session: &str, request: RecordedRequest, response: RecordedResponse, label: &str) {
     let status = response.status;
+    let method = request.method.clone();
+    let path = label_path(&request);
     match state.store.record(session, Interaction { request, response }) {
-        Ok(()) => info!(session, "recorded {label} -> {status}"),
+        Ok(index) => {
+            info!(session, "recorded {label} -> {status}");
+            state.live.emit(Update {
+                kind: Kind::Recorded,
+                session,
+                method: &method,
+                path,
+                status: Some(status),
+                index: Some(index),
+                detail: None,
+            });
+        }
         Err(e) => error!(session, "failed to save recording of {label}: {e:#}"),
     }
+}
+
+fn label_path(request: &RecordedRequest) -> String {
+    format!("/{}{}", request.upstream, request.path)
 }
 
 fn replay(recorded: RecordedResponse, timing: Timing) -> Result<Response, ProxyError> {

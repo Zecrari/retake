@@ -8,16 +8,23 @@ use anyhow::Context;
 use crate::config::{Config, Mode};
 use crate::proxy::{self, AppState};
 use crate::store::Stats;
+use crate::ui;
 
 /// Placeholder keys so SDKs that insist on a key don't fail during replay.
 const REPLAY_KEY: &str = "retake-replay-placeholder";
 
-/// Returns the process exit code.
-pub async fn run(config: Config, bind: SocketAddr, command: Vec<String>) -> anyhow::Result<i32> {
+/// Returns the process exit code. With `open_dashboard`, the live dashboard
+/// opens in a browser for as long as the proxy runs.
+pub async fn run(config: Config, bind: SocketAddr, command: Vec<String>, open_dashboard: bool) -> anyhow::Result<i32> {
     let state = Arc::new(AppState::new(&config)?);
     let server = proxy::start(state.clone(), bind).await?;
     let base = format!("http://{}", server.addr);
     let env = child_env(&config, &base);
+    let dashboard = format!("{base}/__retake/");
+    eprintln!("retake: live dashboard at {dashboard}");
+    if open_dashboard {
+        ui::open_browser(&dashboard);
+    }
 
     let exit_code = if command.is_empty() {
         eprintln!("retake {} proxy listening on {base}", config.mode.as_str());

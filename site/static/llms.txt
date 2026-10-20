@@ -7,6 +7,7 @@ Key facts:
 - Commands: `retake record -- <test command>` (real calls, saved), `retake replay -- <test command>` (served from cassettes; unrecorded calls fail with a 404 and a diff), `retake auto` (replay recorded, record new), `retake check` (validate cassettes, scan for secrets).
 - Supports streaming (server-sent events replayed byte-for-byte), tool calling, structured outputs, the OpenAI Responses and Chat Completions APIs, embeddings, and the Anthropic Messages API.
 - One cassette per test via the `x-retake-session` request header.
+- Built-in dashboard: `retake ui` browses cassettes as readable conversations (messages, tool calls, thinking, token usage); every running proxy serves a live view at `/__retake/` showing each call as replayed, recorded or unmatched, with diffs.
 - Request headers are never stored; API keys and tokens in bodies are redacted.
 - Install: `curl -fsSL https://zecrari.github.io/retake/install.sh | sh` (macOS/Linux), `irm https://zecrari.github.io/retake/install.ps1 | iex` (Windows), or `uses: Zecrari/retake@v0` in GitHub Actions.
 - retake is not an evals framework; it makes tests repeatable. It complements evals and scheduled live runs.

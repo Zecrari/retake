@@ -1311,3 +1311,79 @@ h3:hover .heading-anchor,
   padding-top: 0 !important;
   font-size: 22px !important;
 }
+
+/* Dashboard showcase: always dark, like the product. */
+
+.showcase {
+  --ink: #eeece7;
+  --ink-2: #b4b3bb;
+  --ink-3: #8a8b97;
+  --line: #262833;
+  --bg-elev: #14151b;
+  --bg-sunk: #101116;
+  --accent: #ff6b5d;
+  background:
+    radial-gradient(60% 40% at 50% 0%, rgb(255 90 75 / 0.12), transparent 70%),
+    radial-gradient(50% 35% at 85% 30%, rgb(61 220 151 / 0.08), transparent 70%),
+    #0b0c10;
+  color: var(--ink);
+  border-block: 1px solid #1c1e27;
+}
+
+.showcase .section-head {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.shot {
+  margin: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #2a2c38;
+  box-shadow: 0 40px 120px -40px rgb(0 0 0 / 0.9), 0 0 0 6px rgb(255 255 255 / 0.03);
+  background: #0f1015;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.shot-secondary {
+  margin-top: 56px;
+}
+
+.shot figcaption {
+  padding: 14px 18px;
+  border-top: 1px solid #23252f;
+  font-size: 14px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.showcase-points {
+  margin-top: 40px;
+}
+
+.showcase-points p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.showcase :not(pre) > code {
+  background: #1a1c24;
+  border-color: #2a2c38;
+  color: var(--ink);
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.05em 0.45em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--bg-elev);
+  font-size: 0.82em;
+}

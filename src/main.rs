@@ -13,7 +13,8 @@ use retake::config::{self, Config, Mode, Timing};
     name = "retake",
     version,
     about = "Record LLM API calls once, replay them deterministically in tests.",
-    after_help = "Examples:\n  retake record -- npm test      Record real API calls while your tests run\n  retake replay -- npm test      Replay them offline (fails on unrecorded calls)\n  retake auto -- pytest          Replay what's recorded, record what's new\n  retake check                   Validate cassettes and scan for leaked secrets"
+    after_help = "Examples:\n  retake record -- npm test      Record real API calls while your tests run\n  retake replay -- npm test      Replay them offline (fails on unrecorded calls)\n  retake auto -- pytest          Replay what's recorded, record what's new\n  retake check                   Validate cassettes and scan for leaked secrets
+  retake ui                      Browse and inspect cassettes in your browser"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -38,6 +39,8 @@ enum Command {
     Auto(RunArgs),
     /// Validate cassettes and scan them for leaked secrets.
     Check(CheckArgs),
+    /// Open the dashboard to browse, inspect and clean up cassettes.
+    Ui(UiArgs),
 }
 
 #[derive(Args)]
@@ -78,9 +81,28 @@ struct RunArgs {
     #[arg(long)]
     record_errors: bool,
 
+    /// Open the live dashboard in a browser while the proxy runs.
+    #[arg(long)]
+    open: bool,
+
     /// Command to run with the proxy. Without one, the proxy runs until Ctrl+C.
     #[arg(last = true, value_name = "COMMAND")]
     command: Vec<String>,
+}
+
+#[derive(Args)]
+struct UiArgs {
+    /// Directory where cassettes are stored.
+    #[arg(long, env = "RETAKE_CASSETTES", default_value = "cassettes")]
+    cassettes: PathBuf,
+
+    /// Port to listen on.
+    #[arg(short, long, env = "RETAKE_UI_PORT", default_value_t = 7357)]
+    port: u16,
+
+    /// Don't open a browser.
+    #[arg(long)]
+    no_open: bool,
 }
 
 #[derive(Args)]
@@ -103,6 +125,7 @@ fn main() {
         Command::Replay(args) => run(Mode::Replay, args),
         Command::Auto(args) => run(Mode::Auto, args),
         Command::Check(args) => retake::check::check(&args.paths, args.fix).map(|clean| if clean { 0 } else { 1 }),
+        Command::Ui(args) => ui(args),
     };
     match result {
         Ok(code) => process::exit(code),
@@ -123,7 +146,14 @@ fn run(mode: Mode, args: RunArgs) -> anyhow::Result<i32> {
     config.record_errors = args.record_errors;
     let bind = SocketAddr::new(args.host, args.port);
 
-    tokio::runtime::Runtime::new()?.block_on(retake::runner::run(config, bind, args.command))
+    tokio::runtime::Runtime::new()?.block_on(retake::runner::run(config, bind, args.command, args.open))
+}
+
+fn ui(args: UiArgs) -> anyhow::Result<i32> {
+    // Always loopback: the dashboard can delete cassettes.
+    let bind = SocketAddr::from(([127, 0, 0, 1], args.port));
+    tokio::runtime::Runtime::new()?.block_on(retake::ui::serve(args.cassettes, bind, !args.no_open))?;
+    Ok(0)
 }
 
 fn init_logging(verbose: u8, quiet: bool) {

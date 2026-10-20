@@ -12,7 +12,11 @@ use crate::config::Mode;
 use crate::matcher::Matcher;
 
 pub enum Lookup {
-    Hit(Box<RecordedResponse>),
+    /// `index` is the matched interaction's position in the cassette.
+    Hit {
+        index: usize,
+        response: Box<RecordedResponse>,
+    },
     Miss(Miss),
 }
 
@@ -80,6 +84,10 @@ impl Store {
         }
     }
 
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     pub fn session_path(&self, session: &str) -> PathBuf {
         session_path(&self.dir, session)
     }
@@ -93,7 +101,7 @@ impl Store {
         if let Some(i) = (0..state.keys.len()).find(|&i| !state.used[i] && state.keys[i] == key) {
             state.used[i] = true;
             stats.replayed += 1;
-            return Ok(Lookup::Hit(Box::new(state.cassette.interactions[i].response.clone())));
+            return Ok(Lookup::Hit { index: i, response: Box::new(state.cassette.interactions[i].response.clone()) });
         }
 
         // Prefer an unused recording to the same endpoint: that's almost always
@@ -125,8 +133,9 @@ impl Store {
         self.lock().stats.misses.push(miss.clone());
     }
 
-    /// Appends an interaction and saves the session's cassette immediately.
-    pub fn record(&self, session: &str, interaction: Interaction) -> anyhow::Result<()> {
+    /// Appends an interaction, saves the session's cassette immediately, and
+    /// returns the interaction's index.
+    pub fn record(&self, session: &str, interaction: Interaction) -> anyhow::Result<usize> {
         let key = self.matcher.key(&interaction.request);
         let mut inner = self.lock();
         let Inner { sessions, stats } = &mut *inner;
@@ -138,7 +147,7 @@ impl Store {
         state.used.push(true);
         state.cassette.save(&state.path)?;
         stats.recorded += 1;
-        Ok(())
+        Ok(state.cassette.interactions.len() - 1)
     }
 
     /// Final statistics, including recordings that were never replayed.
@@ -231,7 +240,7 @@ mod tests {
 
         let replayer = Store::new(Mode::Replay, dir.path(), Matcher::default());
         let status = |l: Lookup| match l {
-            Lookup::Hit(r) => r.status,
+            Lookup::Hit { response, .. } => response.status,
             Lookup::Miss(_) => 0,
         };
         assert_eq!(status(replayer.lookup("s", &request(r#"{"n":1}"#)).unwrap()), 201);

@@ -75,6 +75,9 @@ pub fn parse_upstream(s: &str) -> Result<(String, String), String> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_') {
         return Err(format!("upstream name `{name}` must use lowercase letters, digits, `-` or `_`"));
     }
+    if name.starts_with("__") {
+        return Err(format!("upstream name `{name}` can't start with `__` (reserved for retake's own pages)"));
+    }
     let url = url.trim().trim_end_matches('/');
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err(format!("upstream URL `{url}` must start with http:// or https://"));
@@ -95,5 +98,6 @@ mod tests {
         assert!(parse_upstream("no-equals").is_err());
         assert!(parse_upstream("Bad=http://x").is_err());
         assert!(parse_upstream("ok=ftp://x").is_err());
+        assert!(parse_upstream("__retake=http://x").is_err());
     }
 }

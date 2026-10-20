@@ -28,7 +28,7 @@ type: website
       "description": "An open-source, single-binary proxy that records LLM API calls (OpenAI, Anthropic and OpenAI-compatible APIs) once and replays them deterministically in tests.",
       "url": "https://zecrari.github.io/retake/",
       "downloadUrl": "https://github.com/Zecrari/retake/releases",
-      "softwareVersion": "0.1.0",
+      "softwareVersion": "0.2.0",
       "keywords": "LLM testing, AI agent testing, record and replay, VCR for LLMs, mock OpenAI API, mock Claude API, deterministic tests, tool calling, structured outputs, CI/CD",
       "applicationCategory": "DeveloperApplication",
       "applicationSubCategory": "Testing tool",
@@ -79,6 +79,11 @@ type: website
         },
         {
           "@type": "Question",
+          "name": "Does retake have a GUI?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. retake ui opens a local dashboard to browse cassettes as readable conversations, with messages, tool calls, thinking and token usage, and to delete stale recordings. While a test run is going, every proxy also serves a live view at /__retake/ that shows each call as it is replayed, recorded or rejected." }
+        },
+        {
+          "@type": "Question",
           "name": "Is retake an evals framework?",
           "acceptedAnswer": { "@type": "Answer", "text": "No. Evals measure how good model output is; retake makes tests repeatable by replaying recorded output. They work well together: replay recorded outputs to iterate on scoring code quickly, and re-record when the model or prompt changes." }
         },
@@ -96,7 +101,7 @@ type: website
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap hero-grid">
       <div>
-        <a class="eyebrow" href="https://github.com/Zecrari/retake/releases"><span class="rec-dot" aria-hidden="true"></span>Open source · v0.1.0</a>
+        <a class="eyebrow" href="#dashboard"><span class="rec-dot" aria-hidden="true"></span>New in v0.2: the retake dashboard →</a>
         <h1 id="hero-title">Deterministic tests for <span class="rec">LLM</span> apps and <span class="play">agents</span>.</h1>
         <p class="lede">retake records the OpenAI, Claude and other LLM API calls your code makes, then replays them in every test run — offline, in milliseconds, byte-for-byte the same. Built for AI agents, tool calling and streaming. One binary. Any language. No code changes.</p>
         <div class="cta-row">
@@ -206,7 +211,44 @@ retake: <span class="t-ok">2 replayed</span>, 0 recorded, 0 unmatched
     </div>
   </section>
 
-  <section aria-labelledby="lang-title">
+  <section id="dashboard" class="showcase" aria-labelledby="dashboard-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">New · Dashboard</p>
+      <h2 id="dashboard-title">See every recorded call. Watch replays live.</h2>
+      <p>Run <code>retake ui</code> to browse cassettes as readable conversations — system prompt, messages, tool calls, thinking and token usage. During a test run, the same dashboard streams every call as it happens, with a diff for anything that didn't match.</p>
+    </div>
+    <figure class="shot">
+      <picture>
+        <source srcset="{{base}}assets/dashboard-conversation.webp" type="image/webp">
+        <img src="{{base}}assets/dashboard-conversation.jpg" width="1536" height="695" loading="lazy" decoding="async" alt="The retake dashboard showing a recorded Claude agent conversation: system prompt, user message, thinking, and a lookup_order tool call, next to a list of cassettes and interactions.">
+      </picture>
+    </figure>
+    <div class="grid grid-3 showcase-points">
+      <div>
+        <h3>Conversations, not JSON</h3>
+        <p>OpenAI Chat, the Responses API and Anthropic Messages render as chat transcripts, with tool calls, tool results and thinking. Streams are reassembled into text.</p>
+      </div>
+      <div>
+        <h3>Live while tests run</h3>
+        <p>Every proxy serves the dashboard at <code>/__retake/</code>. Add <code>--open</code> and watch calls get replayed, recorded or rejected in real time.</p>
+      </div>
+      <div>
+        <h3>Built in and local</h3>
+        <p>No install, no account, no telemetry. The UI ships inside the binary, listens on localhost only, and makes no external requests.</p>
+      </div>
+    </div>
+    <figure class="shot shot-secondary">
+      <picture>
+        <source srcset="{{base}}assets/dashboard-live.webp" type="image/webp">
+        <img src="{{base}}assets/dashboard-live.jpg" width="1536" height="695" loading="lazy" decoding="async" alt="The retake live view: a feed of replayed and unmatched requests, and a diff showing that a changed system prompt no longer matches its recording.">
+      </picture>
+      <figcaption>Live view: a prompt changed, so the call no longer matches its recording — and the diff shows exactly why.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section aria-labelledby="lang-title">
     <div class="wrap grid grid-2" style="align-items:center;gap:48px">
       <div>
         <p class="kicker">Any language</p>
@@ -427,6 +469,10 @@ retake replay --port 9000</code></pre></div>
         <details>
           <summary>How do I test AI agents with retake?</summary>
           <p>Run the agent's test once with <code>retake record</code>. Every model call is saved in order, including tool calls. On replay, the first response is identical, so your agent sends the same follow-up requests, which match the recording too — the whole trajectory replays deterministically. Keep your tools deterministic in tests (fixed clocks, seeded data) or ignore volatile fields with <code>--ignore</code>.</p>
+        </details>
+        <details>
+          <summary>Does retake have a GUI?</summary>
+          <p>Yes. <code>retake ui</code> opens a local dashboard to browse cassettes as readable conversations — messages, tool calls, thinking and token usage — and delete stale recordings. While a test run is going, every proxy also serves a live view at <code>/__retake/</code> that shows each call as it's replayed, recorded or rejected.</p>
         </details>
         <details>
           <summary>Is retake an evals framework?</summary>

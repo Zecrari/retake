@@ -48,7 +48,24 @@ command it runs, and the official SDKs pick them up automatically — in Python,
 - **Safe to commit.** Request headers are never stored, and anything that looks like an API key,
   token or private key is redacted. `retake check` scans cassettes in CI or as a pre-commit hook.
 - **One cassette per test.** Pick the cassette per request with the `x-retake-session` header.
+- **Built-in dashboard.** Browse cassettes as conversations, and watch calls replay live.
 - **Single static binary.** No Python, Node or Docker needed. Linux, macOS and Windows.
+
+## Dashboard
+
+`retake ui` opens a local dashboard: every cassette as a readable conversation — system prompt,
+messages, tool calls, thinking and token usage — with the raw request, response and stream events
+one click away.
+
+![The retake dashboard showing a recorded Claude agent conversation with a tool call](site/static/assets/dashboard-conversation.jpg)
+
+While a test run is going, the proxy serves the same dashboard live at `/__retake/` (add `--open`
+to launch it). Each call shows up as it's replayed, recorded or rejected, and an unmatched call
+shows the diff against its closest recording:
+
+![The retake live view with a diff for an unmatched request](site/static/assets/dashboard-live.jpg)
+
+The UI is compiled into the binary, listens on localhost only, and makes no external requests.
 
 ## Install
 
@@ -176,8 +193,10 @@ retake record|replay|auto [OPTIONS] [-- COMMAND...]
   --timing <fast|realtime> Replay pacing [default: fast]
   --record-timing          Store event timing (needed for --timing realtime)
   --record-errors          Also record 429 and 5xx responses
+  --open                   Open the live dashboard in a browser
 
 retake check [PATHS...] [--fix]   Validate cassettes and scan for secrets
+retake ui [--cassettes DIR] [--port PORT] [--no-open]   Browse cassettes [default port: 7357]
 ```
 
 Without a command, the proxy runs until Ctrl+C and prints the variables to set.
@@ -199,7 +218,7 @@ If you only use Python and want fuzzy matching, `reel` is worth a look too.
 
 - Ordered agent-session matching that reports the first step where a run diverged
 - Gemini and Bedrock request normalization
-- A local web UI to browse and diff cassettes
+- Side-by-side cassette diffs in the dashboard
 - `retake prune` to remove unused recordings
 
 Ideas and feedback are very welcome in [issues](https://github.com/Zecrari/retake/issues).

@@ -17,6 +17,7 @@ published: 2026-10-19
     </div>
     <p>Guides</p>
     <div class="nav-group">
+      <a href="#dashboard">Dashboard</a>
       <a href="#modes">Modes</a>
       <a href="#sessions">Sessions</a>
       <a href="#matching">Matching</a>
@@ -41,7 +42,7 @@ published: 2026-10-19
     <h2 id="install">Installation<a class="heading-anchor" href="#install" aria-label="Link to Installation">#</a></h2>
     <h3>macOS and Linux</h3>
 <pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh</code></pre>
-    <p>Installs to <code>~/.local/bin</code>. Set <code>RETAKE_INSTALL_DIR</code> to change that, or <code>RETAKE_VERSION=v0.1.0</code> to pin a version. The script verifies the SHA-256 checksum of the download.</p>
+    <p>Installs to <code>~/.local/bin</code>. Set <code>RETAKE_INSTALL_DIR</code> to change that, or <code>RETAKE_VERSION=v0.2.0</code> to pin a version. The script verifies the SHA-256 checksum of the download.</p>
     <h3>Windows</h3>
 <pre><code>irm https://zecrari.github.io/retake/install.ps1 | iex</code></pre>
     <h3>Other options</h3>
@@ -61,6 +62,24 @@ published: 2026-10-19
     </ol>
     <p>Anything after <code>--</code> is the command to run: <code>npm test</code>, <code>go test ./...</code>, <code>python app.py</code>, a shell script. retake starts a proxy on a free port, runs the command with the right environment variables, and prints a summary when it exits:</p>
 <pre><code>retake: 12 replayed, 0 recorded, 0 unmatched</code></pre>
+
+    <h2 id="dashboard">Dashboard<a class="heading-anchor" href="#dashboard" aria-label="Link to Dashboard">#</a></h2>
+    <p>retake includes a web dashboard, built into the binary. It never contacts any server other than the retake process on your machine.</p>
+    <h3>Browse cassettes</h3>
+<pre><code>retake ui                        # opens http://127.0.0.1:7357/__retake/
+retake ui --cassettes tests/cassettes --port 8080 --no-open</code></pre>
+    <ul>
+      <li><strong>Conversation view.</strong> OpenAI Chat Completions, the OpenAI Responses API and Anthropic Messages are shown as transcripts: system prompt, messages, tool calls and results, thinking, model, stop reason and token usage. Streamed responses are reassembled into text.</li>
+      <li><strong>Raw view.</strong> The exact request and response bodies, and every server-sent event of a stream.</li>
+      <li><strong>Clean up.</strong> Delete a stale interaction or a whole cassette. Changes are written straight to the JSON files, so they show up in <code>git diff</code>.</li>
+      <li><strong>Keyboard.</strong> <kbd>/</kbd> filters cassettes; <kbd>↑</kbd>/<kbd>↓</kbd> or <kbd>j</kbd>/<kbd>k</kbd> move between interactions.</li>
+    </ul>
+    <h3>Watch a run live</h3>
+    <p>Every <code>record</code>, <code>replay</code> and <code>auto</code> proxy also serves the dashboard at <code>http://127.0.0.1:&lt;port&gt;/__retake/</code> — the address is printed when it starts. Add <code>--open</code> to open it automatically:</p>
+<pre><code>retake replay --open -- npm test
+retake replay --port 9000 --open    # keep the proxy up while you work</code></pre>
+    <p>The live view lists each call as it happens — replayed, recorded, passed through, or unmatched — and links straight to the interaction in its cassette. For an unmatched call it shows the diff against the closest recording. While a proxy is running, its cassettes are read-only in the dashboard; use <code>retake ui</code> to edit them.</p>
+    <div class="callout">The dashboard only answers requests addressed to <code>localhost</code>, which blocks DNS-rebinding attacks, and requires a custom header for anything that changes files, so other websites can't reach it.</div>
 
     <h2 id="modes">Modes<a class="heading-anchor" href="#modes" aria-label="Link to Modes">#</a></h2>
     <div class="table-wrap">
@@ -159,7 +178,7 @@ client = new OpenAI({
     <p>With the <a href="https://pre-commit.com">pre-commit</a> framework:</p>
 <pre><code>repos:
 - repo: https://github.com/Zecrari/retake
-  rev: v0.1.0
+  rev: v0.2.0
   hooks:
     - id: retake-check</code></pre>
 
@@ -173,7 +192,7 @@ test:
     - uses: Zecrari/retake@v0        # installs the latest release
     - run: retake check
     - run: retake replay -- npm test</code></pre>
-    <p>Pin a version with <code>with: { version: v0.1.0 }</code>. The action verifies the download's checksum and works on Linux, macOS and Windows runners. No API key secret is needed.</p>
+    <p>Pin a version with <code>with: { version: v0.2.0 }</code>. The action verifies the download's checksum and works on Linux, macOS and Windows runners. No API key secret is needed.</p>
     <h3>Other CI systems</h3>
 <pre><code>curl -fsSL https://zecrari.github.io/retake/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -212,7 +231,8 @@ retake replay -- npm test</code></pre>
 <pre><code>retake record [OPTIONS] [-- COMMAND...]
 retake replay [OPTIONS] [-- COMMAND...]
 retake auto   [OPTIONS] [-- COMMAND...]
-retake check  [PATHS...] [--fix]</code></pre>
+retake check  [PATHS...] [--fix]
+retake ui     [--cassettes DIR] [--port PORT] [--no-open]</code></pre>
     <div class="table-wrap">
       <table>
         <thead><tr><th scope="col">Option</th><th scope="col">Default</th><th scope="col">Description</th></tr></thead>
@@ -226,6 +246,7 @@ retake check  [PATHS...] [--fix]</code></pre>
           <tr><td><code>--timing &lt;fast|realtime&gt;</code></td><td><code>fast</code></td><td>Pacing of replayed streams</td></tr>
           <tr><td><code>--record-timing</code></td><td>off</td><td>Store event timing while recording</td></tr>
           <tr><td><code>--record-errors</code></td><td>off</td><td>Also record <code>429</code> and <code>5xx</code> responses</td></tr>
+          <tr><td><code>--open</code></td><td>off</td><td>Open the live dashboard in a browser while the proxy runs</td></tr>
           <tr><td><code>-v</code>, <code>-vv</code>, <code>-q</code></td><td>—</td><td>More or less logging. <code>RUST_LOG</code> overrides.</td></tr>
         </tbody>
       </table>
